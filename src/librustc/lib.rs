@@ -79,6 +79,7 @@ pub mod middle {
     pub mod expr_use_visitor;
     pub mod dependency_format;
     pub mod weak_lang_items;
+    pub mod save;
 }
 
 pub mod front {
