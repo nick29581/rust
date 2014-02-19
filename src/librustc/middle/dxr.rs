@@ -34,7 +34,7 @@ use syntax::codemap::*;
 use syntax::diagnostic;
 use syntax::parse::lexer;
 use syntax::parse::lexer::{Reader,StringReader};
-use syntax::parse::token::{get_ident,is_keyword,keywords,is_ident,Token,EOF,EQ,COLON,LT,GT,SHL,SHR,BINOP,LPAREN};
+use syntax::parse::token::{get_ident,is_keyword,keywords,is_ident,Token,EOF,EQ,COLON,LT,GT,SHL,SHR,BINOP,LPAREN,COMMA};
 use syntax::visit;
 use syntax::visit::Visitor;
 use syntax::print::pprust::{path_to_str,ty_to_str};
@@ -136,7 +136,10 @@ impl SpanUtils {
         let toks = self.retokenise_span(span);
         loop {
             let ts = toks.next_token();
-            if ts.tok == EOF {
+            // TODO: find a workaround rather than matching LT
+            // problem -- foo : bar<T,U>, span_for_last_ident would match U
+            // instead of bar as the span for the type bar
+            if ts.tok == EOF || ts.tok == LT {
                 return result
             }
             if is_ident(&ts.tok) || is_keyword(keywords::Self, &ts.tok) {
@@ -204,6 +207,36 @@ impl SpanUtils {
         while next.tok != EOF {
             if next.tok == tok {
                 sub_spans.push(prev.sp);
+            }
+            prev = next;
+            next = toks.next_token();
+        }
+        return sub_spans;
+    }
+
+    // Return an owned vector of the subspans of the param identifier
+    // tokens found in span.
+    fn spans_for_ty_params(&self, span: Span) -> ~[Span] {
+        let mut sub_spans : ~[Span] = ~[];
+        let toks = self.retokenise_span(span);
+        let mut prev = toks.next_token();
+        let mut next = toks.next_token();
+        // we keep track of which <> we're currently in.
+        // we only want param idents in the outer <>, e.g:
+        // fn<T:Add<T,T>> foo() <-- only the first T
+        let mut in_correct_ltgt = false;
+        while next.tok != EOF {
+            if prev.tok == LT {
+                if !in_correct_ltgt && is_ident(&next.tok) {
+                    sub_spans.push(next.sp);
+                }
+                in_correct_ltgt = !in_correct_ltgt;
+            }
+            if prev.tok == GT {
+                in_correct_ltgt = !in_correct_ltgt;
+            }
+            if prev.tok == COMMA && is_ident(&next.tok) && in_correct_ltgt {
+                sub_spans.push(next.sp);
             }
             prev = next;
             next = toks.next_token();
@@ -697,7 +730,22 @@ impl <'l> DxrVisitor<'l> {
         // walk the fn body
         self.visit_block(method.body, DxrVisitorEnv::new_nested(method.id));
 
-        // TODO type params
+        self.process_generic_params(&method.generics, method.span, qualname, method.id, e);
+    }
+
+    fn process_trait_ref(&mut self, trait_ref: &ast::TraitRef, e: DxrVisitorEnv, impl_id: Option<NodeId>) {
+        match self.lookup_type_ref(trait_ref.ref_id) {
+            Some(id) => {
+                let sub_span = self.span.span_for_last_ident(trait_ref.path.span);
+                match impl_id {
+                    Some(impl_id) => impl_str(self.recorder, self.span, trait_ref.path.span, sub_span, impl_id, id, e.cur_scope),
+                    None => (),
+                }
+                ref_str(self.recorder, self.span, "type_ref", trait_ref.path.span, sub_span, id);
+                visit::walk_path(self, &trait_ref.path, e);
+            },
+            None => ()
+        }
     }
 
     fn process_struct_field_def(&mut self, field: &ast::StructField, qualname: &str, scope_id: NodeId) {
@@ -720,6 +768,33 @@ impl <'l> DxrVisitor<'l> {
             _ => (),
         }
     }
+
+    // Dump generic params bindings, then visit_generics
+    fn process_generic_params(&mut self, generics:&ast::Generics,
+                            full_span: Span,
+                            prefix: &str,
+                            id: NodeId,
+                            e: DxrVisitorEnv) {
+        // can't only use visit_generics since we don't have spans for param bindings,
+        // so we reparse the full_span to get those sub spans
+        let param_sub_spans = self.span.spans_for_ty_params(full_span);
+        let mut span_num = 0;
+        for param in generics.ty_params.iter() {
+            // append $id to name to make sure each one is unique
+            let name = format!("{}::{}${}",
+                               prefix,
+                               escape(self.span.snippet(param_sub_spans[span_num])),
+                               id.to_str());
+            typedef_str(self.recorder, self.span,
+                        full_span,
+                        Some(param_sub_spans[span_num]),
+                        param.id,
+                        name,
+                        "");
+            span_num += 1;
+        }
+        self.visit_generics(generics, e);
+    }
 }
 
 impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
@@ -729,7 +804,7 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
         }
 
         match item.node {
-            ast::ItemFn(decl, _, _, _, body) => {
+            ast::ItemFn(decl, _, _, ref ty_params, body) => {
                 let qualname = self.analysis.ty_cx.map.path_to_str_with_ident(item.id, item.ident);
 
                 let sub_span = self.span.sub_span_after_keyword(item.span, keywords::Fn);
@@ -746,7 +821,7 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                 // walk the body
                 self.visit_block(body, DxrVisitorEnv::new_nested(item.id));
 
-                // TODO walk type params
+                self.process_generic_params(ty_params, item.span, qualname, item.id, e);
             },
             ast::ItemStatic(typ, mt, expr) => {
                 let qualname = self.analysis.ty_cx.map.path_to_str_with_ident(item.id, item.ident);
@@ -771,7 +846,7 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                 self.visit_ty(typ, e);
                 self.visit_expr(expr, e);
             },
-            ast::ItemStruct(def, ref _g) => {
+            ast::ItemStruct(def, ref ty_params) => {
                 let qualname = self.analysis.ty_cx.map.path_to_str_with_ident(item.id, item.ident);
 
                 let ctor_id = match def.ctor_id {
@@ -792,11 +867,12 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                 // fields
                 for field in def.fields.iter() {
                     self.process_struct_field_def(field, qualname, item.id);
+                    self.visit_ty(field.node.ty, e);
                 }
 
-                // TODO walk type params
+                self.process_generic_params(ty_params, item.span, qualname, item.id, e);
             },
-            ast::ItemEnum(ref enum_definition, _) => {
+            ast::ItemEnum(ref enum_definition, ref ty_params) => {
                 let qualname = self.analysis.ty_cx.map.path_to_str_with_ident(item.id, item.ident);
                 match self.span.sub_span_after_keyword(item.span, keywords::Enum) {
                     Some(sub_span) => enum_str(self.recorder,
@@ -850,6 +926,7 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                         }
                     }
                 }
+                self.process_generic_params(ty_params, item.span, qualname, item.id, e);
             },
             ast::ItemImpl(ref type_parameters, ref trait_ref, typ, ref methods) => {
                 match typ.node {
@@ -867,20 +944,12 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                 }
 
                 match *trait_ref {
-                    Some(ref trait_ref) => {
-                        match self.lookup_type_ref(trait_ref.ref_id) {
-                            Some(id) => {
-                                let sub_span = self.span.span_for_last_ident(trait_ref.path.span);
-                                ref_str(self.recorder, self.span, "type_ref", trait_ref.path.span, sub_span, id);
-                                impl_str(self.recorder, self.span, trait_ref.path.span, sub_span, item.id, id, e.cur_scope);
-                            },
-                            None => ()
-                        }
-                    },
+                    Some(ref trait_ref) => self.process_trait_ref(trait_ref, e, Some(item.id)),
                     None => (),
                 }
 
-                self.visit_generics(type_parameters, e);
+                self.process_generic_params(type_parameters, item.span, "", item.id, e);
+                self.visit_ty(typ, e);
                 for method in methods.iter() {
                     visit::walk_method_helper(self, *method, e)
                 }
@@ -904,7 +973,7 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                 }
 
                 // walk generics and methods
-                self.visit_generics(generics, e);
+                self.process_generic_params(generics, item.span, qualname, item.id, e);
                 for method in methods.iter() {
                     self.visit_trait_method(method, e)
                 }
@@ -937,7 +1006,7 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
 
                 visit::walk_mod(self, m, DxrVisitorEnv::new_nested(item.id));
             },
-            ast::ItemTy(ty, ref _g) => {
+            ast::ItemTy(ty, ref ty_params) => {
                 let qualname = self.analysis.ty_cx.map.path_to_str_with_ident(item.id, item.ident);
                 let value = ty_to_str(ty);
                 let sub_span = self.span.sub_span_after_keyword(item.span, keywords::Type);
@@ -950,10 +1019,27 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                             value);
 
                 self.visit_ty(ty, e);
-                //TODO type params
+                self.process_generic_params(ty_params, item.span, qualname, item.id, e);
             },
             ast::ItemMac(_) => (),
             _ => visit::walk_item(self, item, e),
+        }
+    }
+
+    fn visit_generics(&mut self, generics:&ast::Generics, e:DxrVisitorEnv) {
+        for param in generics.ty_params.iter() {
+            for bound in param.bounds.iter() {
+                match *bound {
+                    ast::TraitTyParamBound(ref trait_ref) => {
+                        self.process_trait_ref(trait_ref, e, None);
+                    }
+                    _ => {}
+                }
+            }
+            match param.default {
+                Some(ty) => self.visit_ty(ty, e),
+                None => (),
+            }
         }
     }
 
@@ -1008,7 +1094,7 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                 }
                 self.visit_ty(method_type.decl.output, e);
 
-                // TODO type params
+                self.process_generic_params(&method_type.generics, method_type.span, qualname, method_type.id, e);
             }
             ast::Provided(method) => self.process_method(method, e),
         }
@@ -1096,7 +1182,7 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
         }
         
         match t.node {
-            ast::TyPath(ref path, ref bounds, id) => {
+            ast::TyPath(ref path, _, id) => {
                 match self.lookup_type_ref(id) {
                     Some(id) => {
                         let sub_span = self.span.span_for_last_ident(t.span);
@@ -1108,9 +1194,6 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                 self.write_sub_paths_truncated(path, e.cur_scope);
 
                 visit::walk_path(self, path, e);
-                for bounds in bounds.iter() {
-                    visit::walk_ty_param_bounds(self, bounds, e)
-                }
             },
             _ => visit::walk_ty(self, t, e),
         }
@@ -1139,7 +1222,8 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                     ast::DefLocal(id, _) |
                     ast::DefArg(id, _) |
                     ast::DefUpvar(id, _, _, _) |
-                    ast::DefBinding(id, _) => ref_str(self.recorder, self.span, "var_ref", ex.span, sub_span, DefId{node:id, krate:0}),
+                    ast::DefBinding(id, _) |
+                    ast::DefTyParamBinder(id) => ref_str(self.recorder, self.span, "var_ref", ex.span, sub_span, DefId{node:id, krate:0}),
                     ast::DefStatic(def_id,_) => ref_str(self.recorder, self.span, "var_ref", ex.span, sub_span, def_id),
                     ast::DefStruct(def_id) => ref_str(self.recorder, self.span, "struct_ref", ex.span, sub_span, def_id),
                     ast::DefStaticMethod(declid, provenence, _) => {
@@ -1256,7 +1340,7 @@ impl<'l> Visitor<DxrVisitorEnv> for DxrVisitor<'l> {
                 // walk receiver and args
                 visit::walk_exprs(self, *args, e);
 
-                // TODO type params
+                // TODO type params <-- ?
             },
             ast::ExprField(sub_ex, ident, _) => {
                 self.visit_expr(sub_ex, e);
