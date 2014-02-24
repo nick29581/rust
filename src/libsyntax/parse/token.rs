@@ -477,21 +477,22 @@ declare_special_idents_and_keywords! {
         (36,                         Type,       "type");
         (37,                         Unsafe,     "unsafe");
         (38,                         Use,        "use");
-        (39,                         While,      "while");
-        (40,                         Continue,   "continue");
-        (41,                         Proc,       "proc");
-        (42,                         Box,        "box");
+        (39,                         Virtual,    "virtual");
+        (40,                         While,      "while");
+        (41,                         Continue,   "continue");
+        (42,                         Proc,       "proc");
+        (43,                         Box,        "box");
 
         'reserved:
-        (43,                         Alignof,    "alignof");
-        (44,                         Be,         "be");
-        (45,                         Offsetof,   "offsetof");
-        (46,                         Pure,       "pure");
-        (47,                         Sizeof,     "sizeof");
-        (48,                         Typeof,     "typeof");
-        (49,                         Unsized,    "unsized");
-        (50,                         Yield,      "yield");
-        (51,                         Do,         "do");
+        (44,                         Alignof,    "alignof");
+        (45,                         Be,         "be");
+        (46,                         Offsetof,   "offsetof");
+        (47,                         Pure,       "pure");
+        (48,                         Sizeof,     "sizeof");
+        (49,                         Typeof,     "typeof");
+        (50,                         Unsized,    "unsized");
+        (51,                         Yield,      "yield");
+        (52,                         Do,         "do");
     }
 }
 

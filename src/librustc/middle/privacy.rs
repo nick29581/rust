@@ -494,7 +494,7 @@ impl<'a> PrivacyVisitor<'a> {
         // members, so that's why we test the parent, and not the did itself.
         let mut cur = self.curitem;
         loop {
-            debug!("privacy - questioning {}", self.nodestr(cur));
+            debug!("privacy - questioning {}, {:?}", self.nodestr(cur), cur);
             match cur {
                 // If the relevant parent is in our history, then we're allowed
                 // to look inside any of our ancestor's immediate private items,
@@ -559,10 +559,13 @@ impl<'a> PrivacyVisitor<'a> {
         }
     }
 
-    // Checks that a field is in scope.
-    // FIXME #6993: change type (and name) from Ident to Name
-    fn check_field(&mut self, span: Span, id: ast::DefId, ident: ast::Ident) {
-        for field in ty::lookup_struct_fields(self.tcx, id).iter() {
+    fn check_field(&mut self,
+                   span: Span,
+                   id: ast::DefId,
+                   ident: ast::Ident) {
+        debug!("privacy - check field {} in struct {}", ident.name, id);
+        let fields = ty::lookup_struct_fields(self.tcx, id);
+        for field in fields.iter() {
             if field.name != ident.name { continue; }
             if field.vis == ast::Public { break }
             if !is_local(field.id) ||
