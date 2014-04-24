@@ -3063,12 +3063,22 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
                     let t_1_is_char = type_is_char(fcx, expr.span, t_1);
                     let t_1_is_bare_fn = type_is_bare_fn(fcx, expr.span, t_1);
 
+                    let t_1_is_ptr_dst_vec = type_is_ptr_dst_vec(fcx, expr.span, t_1);
+                    let t_e_is_ptr_sized_vec = type_is_ptr_sized_vec(fcx, expr.span, t_e);
+                    let t_matching_ptrs = types_are_matching_ptrs(fcx, expr.span, t_1, t_e);
+
                     // casts to scalars other than `char` and `bare fn` are trivial
                     let t_1_is_trivial = t_1_is_scalar &&
                         !t_1_is_char && !t_1_is_bare_fn;
 
                     if type_is_c_like_enum(fcx, expr.span, t_e) && t_1_is_trivial {
                         // casts from C-like enums are allowed
+                    } else if t_1_is_ptr_dst_vec && t_e_is_ptr_sized_vec && t_matching_ptrs {
+                        // casts from `&[T, ..n]` to `&[T]` or `~[T, ..n]` to `~[T]` are allowed
+
+                        // Note(nrc): we should handle this check in a more general way, allowing
+                        // coercion from `[T, ..n]` to `[T]` and covariant coercions.
+                        // We should also handle `*[T]`
                     } else if t_1_is_char {
                         let te = fcx.infcx().resolve_type_vars_if_possible(te);
                         if ty::get(te).sty != ty::ty_uint(ast::TyU8) {
@@ -4011,6 +4021,46 @@ pub fn type_is_region_ptr(fcx: &FnCtxt, sp: Span, typ: ty::t) -> bool {
 pub fn type_is_c_like_enum(fcx: &FnCtxt, sp: Span, typ: ty::t) -> bool {
     let typ_s = structurally_resolved_type(fcx, sp, typ);
     return ty::type_is_c_like_enum(fcx.ccx.tcx, typ_s);
+}
+
+pub fn type_is_ptr_sized_vec(fcx: &FnCtxt, sp: Span, typ: ty::t) -> bool {
+    let typ_s = structure_of(fcx, sp, typ);
+    match typ_s {
+        &ty::ty_uniq(t) => match ty::get(t).sty {
+            ty::ty_vec(_, Some(_)) => true,
+            _ => false,
+        },
+        &ty::ty_rptr(_, mt) => match ty::get(mt.ty).sty {
+            ty::ty_vec(_, Some(_)) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+pub fn type_is_ptr_dst_vec(fcx: &FnCtxt, sp: Span, typ: ty::t) -> bool {
+    let typ_s = structure_of(fcx, sp, typ);
+    match typ_s {
+        &ty::ty_uniq(t) => match ty::get(t).sty {
+            ty::ty_vec(_, None) => true,
+            _ => false,
+        },
+        &ty::ty_rptr(_, mt) => match ty::get(mt.ty).sty {
+            ty::ty_vec(_, None) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+pub fn types_are_matching_ptrs(fcx: &FnCtxt, sp: Span, typ1: ty::t, typ2: ty::t) -> bool {
+    let typ1_s = structure_of(fcx, sp, typ1);
+    let typ2_s = structure_of(fcx, sp, typ2);
+    match (typ1_s, typ2_s) {
+        (&ty::ty_rptr(..), &ty::ty_rptr(..)) => true,
+        (&ty::ty_uniq(..), &ty::ty_uniq(..)) => true,
+        _ => false
+    }
 }
 
 pub fn ast_expr_vstore_to_vstore(fcx: &FnCtxt,
