@@ -391,8 +391,8 @@ fn trans_datum_unadjusted<'a>(bcx: &'a Block<'a>,
         ast::ExprField(ref base, ident, _) => {
             trans_rec_field(bcx, &**base, ident.node)
         }
-        ast::ExprIndex(ref base, ref idx) => {
-            trans_index(bcx, expr, &**base, &**idx)
+        ast::ExprIndex(base, idx) => {
+            trans_index(bcx, expr.span, &**base, &**idx)
         }
         ast::ExprVstore(ref contents, ast::ExprVstoreUniq) => {
             fcx.push_ast_cleanup_scope(contents.id);
@@ -461,7 +461,7 @@ fn trans_rec_field<'a>(bcx: &'a Block<'a>,
 }
 
 fn trans_index<'a>(bcx: &'a Block<'a>,
-                   index_expr: &ast::Expr,
+                   sp: codemap::Span,
                    base: &ast::Expr,
                    idx: &ast::Expr)
                    -> DatumBlock<'a, Expr> {
@@ -503,7 +503,7 @@ fn trans_index<'a>(bcx: &'a Block<'a>,
     let expect = ccx.get_intrinsic(&("llvm.expect.i1"));
     let expected = Call(bcx, expect, [bounds_check, C_i1(ccx, false)], []);
     let bcx = with_cond(bcx, expected, |bcx| {
-            controlflow::trans_fail_bounds_check(bcx, index_expr.span, ix_val, len)
+            controlflow::trans_fail_bounds_check(bcx, sp, ix_val, len)
         });
     let elt = InBoundsGEP(bcx, base, [ix_val]);
     let elt = PointerCast(bcx, elt, vt.llunit_ty.ptr_to());
@@ -1193,10 +1193,8 @@ fn trans_uniq_expr<'a>(bcx: &'a Block<'a>,
     let llty = type_of::type_of(bcx.ccx(), contents_ty);
     let size = llsize_of(bcx.ccx(), llty);
     let align = C_uint(bcx.ccx(), llalign_of_min(bcx.ccx(), llty) as uint);
-    // We need to a make a pointer type because box_ty is ty_bot
-    // if content_ty is, e.g. box fail!().
-    let real_box_ty = ty::mk_uniq(bcx.tcx(), contents_ty);
-    let Result { bcx, val } = malloc_raw_dyn(bcx, real_box_ty, size, align);
+    let llty_ptr = llty.ptr_to();
+    let Result { bcx, val } = malloc_raw_dyn(bcx, llty_ptr, box_ty, size, align);
     // Unique boxes do not allocate for zero-size types. The standard library
     // may assume that `free` is never called on the pointer returned for
     // `Box<ZeroSizeType>`.
