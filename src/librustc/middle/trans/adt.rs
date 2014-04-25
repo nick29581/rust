@@ -296,7 +296,7 @@ impl Case {
                     _ => true,
                 },
                 ty::ty_box(..) | ty::ty_bare_fn(..) => true,
-                // Is that everything?  Would closures or slices qualify?
+                // Is that everything? Would closures qualify?
                 _ => false
             }
         })
