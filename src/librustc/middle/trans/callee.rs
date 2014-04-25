@@ -654,7 +654,7 @@ pub fn trans_call_inner<'a>(
             // `~` pointer return values never alias because ownership
             // is transferred
             ty::ty_uniq(ty) => match ty::get(ty).sty {
-                ty::ty_str => {}
+                ty::ty_vec(_, None) | ty::ty_str => {}
                 _ => attrs.push((0, NoAliasAttribute)),
             },
             _ => {}

@@ -10,7 +10,6 @@
 
 //! An owned, growable vector.
 
-use RawVec = raw::Vec;
 use clone::Clone;
 use cmp::{Ord, Eq, Ordering, TotalEq, TotalOrd, max};
 use container::{Container, Mutable};
@@ -26,6 +25,8 @@ use ptr::RawPtr;
 use ptr;
 use raw::Slice;
 use rt::heap::{allocate, reallocate, deallocate};
+#[cfg(stage0)]
+use RawVec = raw::Vec;
 use slice::{ImmutableEqVector, ImmutableVector, Items, MutItems, MutableVector};
 use slice::{MutableTotalOrdVector, OwnedVector, Vector};
 use slice::{MutableVectorAllocating};
@@ -1526,6 +1527,47 @@ pub trait FromVec<T> {
 }
 
 impl<T> FromVec<T> for ~[T] {
+    #[cfg(not(stage0))]
+    fn from_vec(mut v: Vec<T>) -> ~[T] {
+        let len = v.len();
+
+        if len == 0 {
+            unsafe {
+                let slice: Slice<T> = Slice{data: 0 as *T, len: 0};
+                mem::transmute(slice)
+            }
+        } else {
+            // In a post-DST world, we can attempt to reuse the Vec allocation by calling
+            // shrink_to_fit() on it. That may involve a reallocation+memcpy, but that's no
+            // diffrent than what we're doing manually here.
+
+            let data = v.as_mut_ptr();
+
+            let unit_size = mem::size_of::<T>();
+            let data_size = if unit_size == 0 {
+                len
+            } else {
+                let data_size = len.checked_mul(&unit_size);
+                data_size.expect("overflow in from_iter()")
+            };
+
+            unsafe {
+                let ret = allocate(data_size, 8) as *mut T;
+
+                if unit_size > 0 {
+                    ptr::copy_nonoverlapping_memory(ret as *mut u8,
+                                                    data as *u8,
+                                                    data_size);
+                }
+                v.set_len(0); // ownership has been transferred
+                let slice: Slice<T> = Slice{data: ret as *T, len: len};
+                mem::transmute(slice)
+            }
+        }
+    }
+
+    // NOTE: remove after snapshot
+    #[cfg(stage0)]
     fn from_vec(mut v: Vec<T>) -> ~[T] {
         let len = v.len();
         let data_size = len.checked_mul(&mem::size_of::<T>());

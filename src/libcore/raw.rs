@@ -29,15 +29,21 @@ pub struct Box<T> {
     pub data: T,
 }
 
+// NOTE: remove after snapshot
 /// The representation of a Rust vector
+#[cfg(stage0)]
 pub struct Vec<T> {
     pub fill: uint,
     pub alloc: uint,
     pub data: T,
 }
 
+// NOTE: remove after snapshot
 /// The representation of a Rust string
+#[cfg(stage0)]
 pub type String = Vec<u8>;
+#[cfg(not(stage0))]
+pub type String = Slice<u8>;
 
 /// The representation of a Rust slice
 pub struct Slice<T> {
@@ -80,6 +86,10 @@ pub trait Repr<T> {
 impl<'a, T> Repr<Slice<T>> for &'a [T] {}
 impl<'a> Repr<Slice<u8>> for &'a str {}
 impl<T> Repr<*Box<T>> for @T {}
+#[cfg(not(stage0))]
+impl<T> Repr<Slice<T>> for ~[T] {}
+// NOTE: remove after snapshot
+#[cfg(stage0)]
 impl<T> Repr<*Vec<T>> for ~[T] {}
 
 #[cfg(test)]

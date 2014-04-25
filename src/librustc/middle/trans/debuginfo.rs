@@ -1976,68 +1976,6 @@ fn fixed_vec_metadata(cx: &CrateContext,
     };
 }
 
-fn vec_metadata(cx: &CrateContext,
-                element_type: ty::t,
-                span: Span)
-             -> DICompositeType {
-
-    let element_type_metadata = type_metadata(cx, element_type, span);
-    let element_llvm_type = type_of::type_of(cx, element_type);
-    let (element_size, element_align) = size_and_align_of(cx, element_llvm_type);
-
-    let vec_llvm_type = Type::vec(cx, &element_llvm_type);
-    let vec_type_name = format!("[{}]",
-                                ppaux::ty_to_str(cx.tcx(), element_type));
-    let vec_type_name = vec_type_name.as_slice();
-
-    let member_llvm_types = vec_llvm_type.field_types();
-
-    let int_type_metadata = type_metadata(cx, ty::mk_int(), span);
-    let array_type_metadata = unsafe {
-        llvm::LLVMDIBuilderCreateArrayType(
-            DIB(cx),
-            bytes_to_bits(element_size),
-            bytes_to_bits(element_align),
-            element_type_metadata,
-            create_DIArray(DIB(cx), [llvm::LLVMDIBuilderGetOrCreateSubrange(DIB(cx), 0, 0)]))
-    };
-
-    let member_descriptions = [
-        MemberDescription {
-            name: "fill".to_strbuf(),
-            llvm_type: *member_llvm_types.get(0),
-            type_metadata: int_type_metadata,
-            offset: ComputedMemberOffset,
-        },
-        MemberDescription {
-            name: "alloc".to_strbuf(),
-            llvm_type: *member_llvm_types.get(1),
-            type_metadata: int_type_metadata,
-            offset: ComputedMemberOffset,
-        },
-        MemberDescription {
-            name: "elements".to_strbuf(),
-            llvm_type: *member_llvm_types.get(2),
-            type_metadata: array_type_metadata,
-            offset: ComputedMemberOffset,
-        }
-    ];
-
-    assert!(member_descriptions.len() == member_llvm_types.len());
-
-    let loc = span_start(cx, span);
-    let file_metadata = file_metadata(cx, loc.file.name.as_slice());
-
-    composite_type_metadata(
-        cx,
-        vec_llvm_type,
-        vec_type_name,
-        member_descriptions,
-        file_metadata,
-        file_metadata,
-        span)
-}
-
 fn vec_slice_metadata(cx: &CrateContext,
                       vec_type: ty::t,
                       element_type: ty::t,
@@ -2221,12 +2159,12 @@ fn type_metadata(cx: &CrateContext,
         ty::ty_uniq(typ) => {
             match ty::get(typ).sty {
                 ty::ty_vec(ref mt, None) => {
-                    let vec_metadata = vec_metadata(cx, mt.ty, usage_site_span);
+                    let vec_metadata = vec_slice_metadata(cx, t, mt.ty, usage_site_span);
                     pointer_type_metadata(cx, t, vec_metadata)
                 }
                 ty::ty_str => {
                     let i8_t = ty::mk_i8();
-                    let vec_metadata = vec_metadata(cx, i8_t, usage_site_span);
+                    let vec_metadata = vec_slice_metadata(cx, t, i8_t, usage_site_span);
                     pointer_type_metadata(cx, t, vec_metadata)
                 }
                 _ => {

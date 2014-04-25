@@ -224,6 +224,16 @@ impl<'a> ReprVisitor<'a> {
         true
     }
 
+    #[cfg(not(stage0))]
+    pub fn write_unboxed_vec_repr(&mut self, _: uint, v: &raw::Slice<()>, inner: *TyDesc) -> bool {
+        let size = unsafe {
+            if (*inner).size == 0 { 1 } else { (*inner).size }
+        };
+        self.write_vec_range(v.data, v.len * size, inner)
+    }
+
+    // NOTE: remove after snapshot
+    #[cfg(stage0)]
     pub fn write_unboxed_vec_repr(&mut self, _: uint, v: &raw::Vec<()>, inner: *TyDesc) -> bool {
         self.write_vec_range(&v.data, v.fill, inner)
     }
@@ -341,6 +351,25 @@ impl<'a> TyVisitor for ReprVisitor<'a> {
         })
     }
 
+    #[cfg(not(stage0))]
+    fn visit_evec_box(&mut self, mtbl: uint, inner: *TyDesc) -> bool {
+        self.get::<&raw::Box<raw::Slice<()>>>(|this, b| {
+            try!(this, this.writer.write(['@' as u8]));
+            this.write_mut_qualifier(mtbl);
+            this.write_unboxed_vec_repr(mtbl, &b.data, inner)
+        })
+    }
+
+    #[cfg(not(stage0))]
+    fn visit_evec_uniq(&mut self, mtbl: uint, inner: *TyDesc) -> bool {
+        self.get::<raw::Slice<()>>(|this, b| {
+            try!(this, this.writer.write(['~' as u8]));
+            this.write_unboxed_vec_repr(mtbl, b, inner)
+        })
+    }
+
+    // NOTE: remove after snapshot
+    #[cfg(stage0)]
     fn visit_evec_box(&mut self, mtbl: uint, inner: *TyDesc) -> bool {
         self.get::<&raw::Box<raw::Vec<()>>>(|this, b| {
             try!(this, this.writer.write(['@' as u8]));
@@ -349,6 +378,8 @@ impl<'a> TyVisitor for ReprVisitor<'a> {
         })
     }
 
+    // NOTE: remove after snapshot
+    #[cfg(stage0)]
     fn visit_evec_uniq(&mut self, mtbl: uint, inner: *TyDesc) -> bool {
         self.get::<&raw::Vec<()>>(|this, b| {
             try!(this, this.writer.write("box ".as_bytes()));

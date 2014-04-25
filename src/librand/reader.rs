@@ -73,13 +73,18 @@ mod test {
     use super::ReaderRng;
     use std::io::MemReader;
     use std::mem;
+    use std::raw;
     use Rng;
 
     #[test]
     fn test_reader_rng_u64() {
-        // transmute from the target to avoid endianness concerns.
         let v = box [1u64, 2u64, 3u64];
-        let bytes: ~[u8] = unsafe {mem::transmute(v)};
+        // transmute from the target to avoid endianness concerns.
+        let bytes: ~[u8] = unsafe {
+            let mut raw: raw::Slice<u8> = mem::transmute(v);
+            raw.len = 24;
+            mem::transmute(raw)
+        };
         let mut rng = ReaderRng::new(MemReader::new(bytes.move_iter().collect()));
 
         assert_eq!(rng.next_u64(), 1);
@@ -88,9 +93,13 @@ mod test {
     }
     #[test]
     fn test_reader_rng_u32() {
-        // transmute from the target to avoid endianness concerns.
         let v = box [1u32, 2u32, 3u32];
-        let bytes: ~[u8] = unsafe {mem::transmute(v)};
+        // transmute from the target to avoid endianness concerns.
+        let bytes: ~[u8] = unsafe {
+            let mut raw: raw::Slice<u8> = mem::transmute(v);
+            raw.len = 12;
+            mem::transmute(raw)
+        };
         let mut rng = ReaderRng::new(MemReader::new(bytes.move_iter().collect()));
 
         assert_eq!(rng.next_u32(), 1);
