@@ -643,15 +643,21 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
         debug!("walk_autoref: cmt_derefd={}", cmt_derefd.repr(self.tcx()));
 
         match *autoref {
-            ty::AutoPtr(r, m) => {
+            ty::AutoPtr(r, m, ref a) => {
                 self.delegate.borrow(expr.id,
                                      expr.span,
                                      cmt_derefd,
                                      r,
                                      ty::BorrowKind::from_mutbl(m),
-                                     AutoRef)
+                                     AutoRef);
+                match *a {
+                    // TODO is autoderefs correct?
+                    Some(box ref a) => self.walk_autoref(expr, a, 0),
+                    None => {}
+                }
             }
-            ty::AutoBorrowVec(r, m) | ty::AutoBorrowVecRef(r, m) => {
+            ty::AutoBorrowVec(r, m) | ty::AutoBorrowVecRef(r, m) |
+            ty::AutoUnsize(r, m, _) | ty::AutoUnsizeRef(r, m, _) => {
                 let cmt_index = self.mc.cat_index(expr, cmt_derefd, autoderefs+1);
                 self.delegate.borrow(expr.id,
                                      expr.span,
@@ -669,7 +675,7 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                                      ty::BorrowKind::from_mutbl(m),
                                      AutoRef)
             }
-            ty::AutoUnsafe(_) => {}
+            ty::AutoUnsafe(_) | ty::AutoUnsizeUniq(_) => {}
         }
     }
 

@@ -258,15 +258,7 @@ impl<'cx> WritebackCx<'cx> {
                             autoref: self.resolve(&adj.autoref, reason),
                         })
                     }
-
-                    ty::AutoObject(trait_store, bb, def_id, substs) => {
-                        ty::AutoObject(
-                            self.resolve(&trait_store, reason),
-                            self.resolve(&bb, reason),
-                            def_id,
-                            self.resolve(&substs, reason)
-                        )
-                    }
+                    adjustment => adjustment
                 };
                 debug!("Adjustments for node {}: {:?}", id, resolved_adjustment);
                 self.tcx().adjustments.borrow_mut().insert(

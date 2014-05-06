@@ -778,7 +778,7 @@ impl<'a> LookupContext<'a> {
                     ty::ty_vec(_, None) => (0, ty::AutoBorrowVec(region, self_mt.mutbl)),
                     ty::ty_str => (0, ty::AutoBorrowVec(region, self_mt.mutbl)),
                     ty::ty_trait(..) => (0, ty::AutoBorrowObj(region, self_mt.mutbl)),
-                    _ => (1, ty::AutoPtr(region, self_mt.mutbl)),
+                    _ => (1, ty::AutoPtr(region, self_mt.mutbl, None)),
                 };
                 (ty::mk_rptr(tcx, region, self_mt),
                  ty::AutoDerefRef {
@@ -804,6 +804,8 @@ impl<'a> LookupContext<'a> {
         }
     }
 
+    // Takes an [T] - an unwrapped DST pointer (either ~ or &)
+    // [T] to &[T] or &&[T] (note that we started with a &[T] or ~[T] which has been implicitly derefed)
     fn auto_slice_vec(&self, mt: ty::mt, autoderefs: uint) -> Option<MethodCallee> {
         let tcx = self.tcx();
         debug!("auto_slice_vec {}", ppaux::ty_to_str(tcx, mt.ty));
@@ -833,6 +835,40 @@ impl<'a> LookupContext<'a> {
             })
     }
 
+    // [T, ..len] -> [T] or &[T] or &&[T]
+    fn auto_unsize_vec(&self, mt: ty::mt, autoderefs: uint, len: uint) -> Option<MethodCallee> {
+        let tcx = self.tcx();
+        debug!("auto_slice_vec {}", ppaux::ty_to_str(tcx, mt.ty));
+
+        // First try to borrow to a slice
+        let entry = self.search_for_some_kind_of_autorefd_method(
+            |r, m| AutoUnsize(r, m, ty::UnsizeLength(len)),
+            autoderefs, [MutImmutable, MutMutable],
+            |m, _r| ty::mk_vec(tcx, ty::mt {ty:mt.ty, mutbl:m}, None));
+
+        if entry.is_some() {
+            return entry;
+        }
+
+        // Then try to borrow to a slice *and* borrow a pointer.
+        let entry = self.search_for_some_kind_of_autorefd_method(
+            |r, m| AutoUnsizeRef(r, m, ty::UnsizeLength(len)),
+            autoderefs, [MutImmutable, MutMutable],
+            |m, r|  ty::mk_slice(tcx, r, ty::mt {ty:mt.ty, mutbl:m}));
+
+        if entry.is_some() {
+            return entry;
+        }
+
+        // Then try to borrow to a slice *and* borrow a pointer twice.
+        self.search_for_some_kind_of_autorefd_method(
+            |r, m| AutoPtr(r, m, Some( box AutoUnsizeRef(r, m, ty::UnsizeLength(len)))),
+            autoderefs, [MutImmutable, MutMutable],
+            |m, r| {
+                let slice_ty = ty::mk_slice(tcx, r, ty::mt {ty:mt.ty, mutbl:m});
+                ty::mk_rptr(tcx, r, ty::mt {ty:slice_ty, mutbl:MutImmutable})
+            })
+    }
 
     fn auto_slice_str(&self, autoderefs: uint) -> Option<MethodCallee> {
         let tcx = self.tcx();
@@ -888,17 +924,19 @@ impl<'a> LookupContext<'a> {
         let sty = ty::get(self_ty).sty.clone();
         match sty {
             ty_rptr(_, mt) => match ty::get(mt.ty).sty {
-                ty_vec(mt, None) => self.auto_slice_vec(mt, autoderefs),
+                ty_vec(mt, Some(len)) => self.auto_unsize_vec(mt, autoderefs, len),
                 ty_trait(..) => self.auto_slice_trait(mt.ty, autoderefs),
                 _ => None
             },
             ty_uniq(t) => match ty::get(t).sty {
                 ty_vec(mt, None) => self.auto_slice_vec(mt, autoderefs),
+                ty_vec(mt, Some(len)) => self.auto_unsize_vec(mt, autoderefs, len),
                 ty_str => self.auto_slice_str(autoderefs),
                 ty_trait(..) => self.auto_slice_trait(t, autoderefs),
                 _ => None
             },
-            ty_vec(mt, Some(_)) => self.auto_slice_vec(mt, autoderefs),
+
+            ty_vec(mt, Some(len)) => self.auto_unsize_vec(mt, autoderefs, len),
 
             ty_closure(..) => {
                 // This case should probably be handled similarly to
@@ -928,7 +966,7 @@ impl<'a> LookupContext<'a> {
             ty_float(..) | ty_enum(..) | ty_ptr(..) | ty_struct(..) | ty_tup(..) |
             ty_str | ty_vec(..) | ty_trait(..) | ty_closure(..) => {
                 self.search_for_some_kind_of_autorefd_method(
-                    AutoPtr, autoderefs, [MutImmutable, MutMutable],
+                    |r, m| AutoPtr(r, m, None), autoderefs, [MutImmutable, MutMutable],
                     |m,r| ty::mk_rptr(tcx, r, ty::mt {ty:self_ty, mutbl:m}))
             }
 
@@ -957,7 +995,7 @@ impl<'a> LookupContext<'a> {
             None => {
                 assert_eq!(autoderefs, 0);
                 assert_eq!(kind(ty::ReEmpty, ast::MutImmutable),
-                           ty::AutoPtr(ty::ReEmpty, ast::MutImmutable));
+                           ty::AutoPtr(ty::ReEmpty, ast::MutImmutable, None));
                 None
             }
         };

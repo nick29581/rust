@@ -469,6 +469,11 @@ pub fn get_base_and_len(bcx: &Block,
                 let len = Load(bcx, GEPi(bcx, llval, [0u, abi::slice_elt_len]));
                 (base, len)
             }
+            ty::ty_vec(_, Some(n)) => {
+                // TODO best way to deref a pointer?
+                let base = Load(bcx, GEPi(bcx, llval, [0u]));
+                (base, C_uint(ccx, n))
+            }
             _ => ccx.sess().bug("unexpected type in get_base_and_len"),
         },
         _ => ccx.sess().bug("unexpected type in get_base_and_len"),

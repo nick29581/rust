@@ -242,7 +242,7 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                             };
                             match *autoref {
                                 ty::AutoUnsafe(m) |
-                                ty::AutoPtr(ty::ReStatic, m) => {
+                                ty::AutoPtr(ty::ReStatic, m, _) => {
                                     assert!(m != ast::MutMutable);
                                     llconst = llptr;
                                 }
@@ -258,6 +258,30 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                                             ], false);
                                         }
                                         _ => {}
+                                    }
+                                }
+                                ty::AutoUnsize(..) => {
+                                    cx.sess()
+                                      .span_unimpl(e.span,
+                                                   "unimplemented const coercion to unsized type");
+                                }
+                                ty::AutoUnsizeRef(..) => {
+                                    match ty::get(ety).sty {
+                                        ty::ty_vec(_, Some(len)) => {
+                                            inlineable = false;
+                                            let llptr = const_addr_of(cx, llconst);
+                                            assert_eq!(abi::slice_elt_base, 0);
+                                            assert_eq!(abi::slice_elt_len, 1);
+                                            llconst = C_struct(cx, [
+                                                llptr,
+                                                C_uint(cx, len)
+                                            ], false);
+                                        }
+                                        _ => cx.sess().span_bug(e.span,
+                                                                       format!("unimplemented \
+                                                                                type in const unsize \
+                                                                                {}",
+                                                                               ty_to_str(cx.tcx(), ety)).as_slice())
                                     }
                                 }
                                 _ => {

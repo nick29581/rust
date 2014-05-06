@@ -45,6 +45,7 @@ static EMPTY: IsaacRng = IsaacRng {
 };
 
 impl IsaacRng {
+
     /// Create an ISAAC random number generator using the default
     /// fixed seed.
     pub fn new_unseeded() -> IsaacRng {
@@ -209,7 +210,7 @@ impl Rand for IsaacRng {
             let ptr = ret.rsl.as_mut_ptr();
 
             raw::mut_buf_as_slice(ptr as *mut u8,
-                                  mem::size_of_val(&ret.rsl), |slice| {
+                                  (RAND_SIZE*4) as uint, |slice| {
                 other.fill_bytes(slice);
             })
         }
@@ -423,7 +424,7 @@ impl Rand for Isaac64Rng {
             let ptr = ret.rsl.as_mut_ptr();
 
             raw::mut_buf_as_slice(ptr as *mut u8,
-                                  mem::size_of_val(&ret.rsl), |slice| {
+                                  (RAND_SIZE_64*8) as uint, |slice| {
                 other.fill_bytes(slice);
             })
         }
