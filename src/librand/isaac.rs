@@ -14,7 +14,6 @@ use {Rng, SeedableRng, OSRng};
 use std::io::IoResult;
 use std::iter::{range_step, Repeat};
 use std::slice::raw;
-use std::mem;
 
 static RAND_SIZE_LEN: u32 = 8;
 static RAND_SIZE: u32 = 1 << RAND_SIZE_LEN;
@@ -55,7 +54,7 @@ impl IsaacRng {
         unsafe {
             let ptr = rng.rsl.as_mut_ptr();
 
-            raw::mut_buf_as_slice(ptr as *mut u8, mem::size_of_val(&rng.rsl), |slice| {
+            raw::mut_buf_as_slice(ptr as *mut u8, (RAND_SIZE*4) as uint, |slice| {
                 os_rng.fill_bytes(slice);
             })
         }
@@ -265,7 +264,7 @@ impl Isaac64Rng {
         unsafe {
             let ptr = rng.rsl.as_mut_ptr();
 
-            raw::mut_buf_as_slice(ptr as *mut u8, mem::size_of_val(&rng.rsl), |slice| {
+            raw::mut_buf_as_slice(ptr as *mut u8, (RAND_SIZE_64*8) as uint, |slice| {
                 os_rng.fill_bytes(slice);
             })
         }

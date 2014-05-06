@@ -10,7 +10,7 @@
 
 
 use middle::ty;
-use middle::ty::{AutoAddEnv, AutoDerefRef, AutoObject, param_ty};
+use middle::ty::{AutoDerefRef, AutoObject, param_ty};
 use middle::ty_fold::TypeFolder;
 use middle::typeck::astconv::AstConv;
 use middle::typeck::check::{FnCtxt, impl_self_ty};
@@ -686,7 +686,7 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
     match fcx.inh.adjustments.borrow().find(&ex.id) {
         Some(adjustment) => {
             match *adjustment {
-                AutoDerefRef(adj) => {
+                AutoDerefRef(ref adj) => {
                     for autoderef in range(0, adj.autoderefs) {
                         let method_call = MethodCall::autoderef(ex.id, autoderef as u32);
                         match fcx.inh.method_map.borrow().find(&method_call) {
@@ -725,7 +725,7 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
                                                  store, bounds);
                     resolve_object_cast(ex, object_ty);
                 }
-                AutoAddEnv(..) => {}
+                _ => {}
             }
         }
         None => {}

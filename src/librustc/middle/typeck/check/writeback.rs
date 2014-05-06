@@ -258,7 +258,6 @@ impl<'cx> WritebackCx<'cx> {
                             autoref: self.resolve(&adj.autoref, reason),
                         })
                     }
-
                     adjustment => adjustment
                 };
                 debug!("Adjustments for node {}: {:?}", id, resolved_adjustment);
