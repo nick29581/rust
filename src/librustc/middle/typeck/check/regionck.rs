@@ -403,7 +403,7 @@ fn visit_expr(rcx: &mut Rcx, expr: &ast::Expr) {
     for &adjustment in rcx.fcx.inh.adjustments.borrow().find(&expr.id).iter() {
         debug!("adjustment={:?}", adjustment);
         match *adjustment {
-            ty::AutoDerefRef(ty::AutoDerefRef {autoderefs, autoref: opt_autoref}) => {
+            ty::AutoDerefRef(ty::AutoDerefRef {autoderefs, autoref: ref opt_autoref}) => {
                 let expr_ty = rcx.resolve_node_type(expr.id);
                 constrain_autoderefs(rcx, expr, autoderefs, expr_ty);
                 for autoref in opt_autoref.iter() {
@@ -1137,12 +1137,15 @@ fn link_autoref(rcx: &Rcx,
     debug!("expr_cmt={}", expr_cmt.repr(rcx.tcx()));
 
     match *autoref {
-        ty::AutoPtr(r, m) => {
+        ty::AutoPtr(r, m, _) => {
             link_region(rcx, expr.span, r,
                         ty::BorrowKind::from_mutbl(m), expr_cmt);
         }
 
-        ty::AutoBorrowVec(r, m) | ty::AutoBorrowVecRef(r, m) => {
+        ty::AutoBorrowVec(r, m) |
+        ty::AutoBorrowVecRef(r, m) |
+        ty::AutoUnsizeRef(r, m, _) |
+        ty::AutoUnsize(r, m, _) => {
             let cmt_index = mc.cat_index(expr, expr_cmt, autoderefs+1);
             link_region(rcx, expr.span, r,
                         ty::BorrowKind::from_mutbl(m), cmt_index);
@@ -1154,7 +1157,7 @@ fn link_autoref(rcx: &Rcx,
                         ty::BorrowKind::from_mutbl(m), cmt_deref);
         }
 
-        ty::AutoUnsafe(_) => {}
+        ty::AutoUnsafe(_) | ty::AutoUnsizeUniq(_) => {}
     }
 }
 

@@ -63,7 +63,7 @@ use middle::trans::tvec;
 use middle::trans::type_of;
 use middle::ty::struct_fields;
 use middle::ty::{AutoBorrowObj, AutoDerefRef, AutoAddEnv, AutoObject, AutoUnsafe};
-use middle::ty::{AutoPtr, AutoBorrowVec, AutoBorrowVecRef};
+use middle::ty::{AutoPtr, AutoBorrowVec};
 use middle::ty;
 use middle::typeck;
 use middle::typeck::MethodCall;
@@ -190,22 +190,46 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
             }
 
             datum = match adj.autoref {
-                None => {
+                None | Some(AutoBorrowVec(..)) => {
                     datum
                 }
                 Some(AutoUnsafe(..)) | // region + unsafe ptrs have same repr
-                Some(AutoPtr(..)) => {
+                Some(AutoPtr(..)) | Some(ty::AutoBorrowVecRef(..)) => {
                     unpack_datum!(bcx, auto_ref(bcx, datum, expr))
                 }
-                Some(AutoBorrowVec(..)) => {
-                    unpack_datum!(bcx, auto_slice(bcx, expr, datum))
+                Some(ty::AutoUnsize(_, _, ty::UnsizeLength(_))) |
+                Some(ty::AutoUnsizeRef(_, _, ty::UnsizeLength(_))) => {
+                    // TODO factor out into method
+
+                    // TODO need to check the AutoUnsizeKind, could use then len rather
+                    // than looking it up too
+                    let tcx = bcx.tcx();
+                    debug!("nrc autounsize {}", ::util::ppaux::ty_to_str(tcx, datum.ty));
+                    let unit_ty = ty::sequence_element_type(tcx, datum.ty);
+
+                    // TODO not really sure if this is doing the right thing
+                    let base = unpack_datum!(bcx,
+                                             datum.to_lvalue_datum(bcx, "unsize", expr.id));
+                    let (base, len) = base.get_vec_base_and_len(bcx);
+
+                    // this type may have a different region/mutability than the
+                    // real one, but it will have the same runtime representation
+                    let slice_ty = ty::mk_slice(tcx, ty::ReStatic,
+                                                ty::mt { ty: unit_ty, mutbl: ast::MutImmutable });
+
+                    let scratch = rvalue_scratch_datum(bcx, slice_ty, "__adjust");
+                    Store(bcx, base, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
+                    Store(bcx, len, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
+                    unpack_datum!(bcx, DatumBlock(bcx, scratch.to_expr_datum()))
                 }
-                Some(AutoBorrowVecRef(..)) => {
-                    unpack_datum!(bcx, auto_slice_and_ref(bcx, expr, datum))
+                Some(ty::AutoUnsizeUniq(ty::UnsizeLength(_))) => {
+                    fail!("TODO unique unsizing");
                 }
                 Some(AutoBorrowObj(..)) => {
                     unpack_datum!(bcx, auto_borrow_obj(bcx, expr, datum))
                 }
+                // TODO make this more friendly
+                _ => fail!("Unsupported adjustment")
             };
         }
         AutoObject(..) => {
@@ -218,39 +242,6 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
     }
     debug!("after adjustments, datum={}", datum.to_str(bcx.ccx()));
     return DatumBlock {bcx: bcx, datum: datum};
-
-    fn auto_slice<'a>(
-                  bcx: &'a Block<'a>,
-                  expr: &ast::Expr,
-                  datum: Datum<Expr>)
-                  -> DatumBlock<'a, Expr> {
-        // This is not the most efficient thing possible; since slices
-        // are two words it'd be better if this were compiled in
-        // 'dest' mode, but I can't find a nice way to structure the
-        // code and keep it DRY that accommodates that use case at the
-        // moment.
-
-        let mut bcx = bcx;
-        let tcx = bcx.tcx();
-        let unit_ty = ty::sequence_element_type(tcx, datum.ty);
-
-        // Arrange cleanup, if not already done. This is needed in
-        // case we are auto-slicing an owned vector or some such.
-        let datum = unpack_datum!(
-            bcx, datum.to_lvalue_datum(bcx, "auto_slice", expr.id));
-
-        let (base, len) = datum.get_vec_base_and_len(bcx);
-
-        // this type may have a different region/mutability than the
-        // real one, but it will have the same runtime representation
-        let slice_ty = ty::mk_slice(tcx, ty::ReStatic,
-                                    ty::mt { ty: unit_ty, mutbl: ast::MutImmutable });
-
-        let scratch = rvalue_scratch_datum(bcx, slice_ty, "__adjust");
-        Store(bcx, base, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
-        Store(bcx, len, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
-        DatumBlock::new(bcx, scratch.to_expr_datum())
-    }
 
     fn add_env<'a>(bcx: &'a Block<'a>,
                    expr: &ast::Expr,
@@ -266,15 +257,6 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
         let fn_ptr = datum.to_llscalarish(bcx);
         let def = ty::resolve_expr(bcx.tcx(), expr);
         closure::make_closure_from_bare_fn(bcx, closure_ty, def, fn_ptr)
-    }
-
-    fn auto_slice_and_ref<'a>(
-                          bcx: &'a Block<'a>,
-                          expr: &ast::Expr,
-                          datum: Datum<Expr>)
-                          -> DatumBlock<'a, Expr> {
-        let DatumBlock { bcx, datum } = auto_slice(bcx, expr, datum);
-        auto_ref(bcx, datum, expr)
     }
 
     fn auto_borrow_obj<'a>(bcx: &'a Block<'a>,

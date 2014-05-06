@@ -1514,18 +1514,18 @@ fn check_unnecessary_allocation(cx: &Context, e: &ast::Expr) {
     match cx.tcx.adjustments.borrow().find(&e.id) {
         Some(adjustment) => {
             match *adjustment {
-                ty::AutoDerefRef(ty::AutoDerefRef { autoref, .. }) => {
+                ty::AutoDerefRef(ty::AutoDerefRef { ref autoref, .. }) => {
                     match (allocation, autoref) {
-                        (VectorAllocation, Some(ty::AutoBorrowVec(..))) => {
+                        (VectorAllocation, &Some(ty::AutoBorrowVec(..))) => {
                             report("unnecessary allocation, the sigil can be \
                                     removed");
                         }
                         (BoxAllocation,
-                         Some(ty::AutoPtr(_, ast::MutImmutable))) => {
+                         &Some(ty::AutoPtr(_, ast::MutImmutable, None))) => {
                             report("unnecessary allocation, use & instead");
                         }
                         (BoxAllocation,
-                         Some(ty::AutoPtr(_, ast::MutMutable))) => {
+                         &Some(ty::AutoPtr(_, ast::MutMutable, None))) => {
                             report("unnecessary allocation, use &mut \
                                     instead");
                         }

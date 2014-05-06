@@ -1069,7 +1069,7 @@ fn encode_side_tables_for_id(ecx: &e::EncodeContext,
 
     for &adj in tcx.adjustments.borrow().find(&id).iter() {
         match *adj {
-            ty::AutoDerefRef(adj) => {
+            ty::AutoDerefRef(ref adj) => {
                 for autoderef in range(0, adj.autoderefs) {
                     let method_call = MethodCall::autoderef(id, autoderef);
                     for &method in tcx.method_map.borrow().find(&method_call).iter() {
