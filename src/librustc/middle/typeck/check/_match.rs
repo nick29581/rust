@@ -661,9 +661,9 @@ pub fn check_pat(pcx: &pat_ctxt, pat: &ast::Pat, expected: ty::t) {
         let (elt_type, region_var, mutbl) = match *structure_of(fcx,
                                                                 pat.span,
                                                                 expected) {
-          ty::ty_vec(mt, Some(_)) => (mt.ty, default_region_var, ast::MutImmutable),
+          ty::ty_vec(ty, Some(_)) => (ty, default_region_var, ast::MutImmutable),
           ty::ty_uniq(t) => match ty::get(t).sty {
-              ty::ty_vec(mt, None) => {
+              ty::ty_vec(ty, None) => {
                   fcx.type_error_message(pat.span,
                                          |_| {
                                             "unique vector patterns are no \
@@ -671,7 +671,7 @@ pub fn check_pat(pcx: &pat_ctxt, pat: &ast::Pat, expected: ty::t) {
                                          },
                                          expected,
                                          None);
-                  (mt.ty, default_region_var, ast::MutImmutable)
+                  (ty, default_region_var, ast::MutImmutable)
               }
               _ => {
                   check_err();
@@ -679,7 +679,7 @@ pub fn check_pat(pcx: &pat_ctxt, pat: &ast::Pat, expected: ty::t) {
               }
           },
           ty::ty_rptr(r, mt) => match ty::get(mt.ty).sty {
-              ty::ty_vec(mt, None) => (mt.ty, r, mt.mutbl),
+              ty::ty_vec(ty, None) => (ty, r, mt.mutbl),
               _ => {
                   check_err();
                   return;

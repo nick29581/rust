@@ -404,12 +404,12 @@ pub fn ty_to_str(cx: &ctxt, typ: t) -> String {
                   bound_str)
       }
       ty_str => "str".to_string(),
-      ty_vec(ref mt, sz) => {
+      ty_vec(t, sz) => {
           match sz {
               Some(n) => {
-                  format!("[{}, .. {}]", mt_to_str(cx, mt), n)
+                  format!("[{}, .. {}]", ty_to_str(cx, t), n)
               }
-              None => format!("[{}]", ty_to_str(cx, mt.ty)),
+              None => format!("[{}]", ty_to_str(cx, t)),
           }
       }
     }

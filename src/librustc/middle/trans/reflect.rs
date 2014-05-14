@@ -152,9 +152,9 @@ impl<'a, 'b> Reflector<'a, 'b> {
           ty::ty_float(ast::TyF128) => self.leaf("f128"),
 
           // Should rename to vec_*.
-          ty::ty_vec(ref mt, Some(sz)) => {
+          ty::ty_vec(ty, Some(sz)) => {
               let extra = (vec!(self.c_uint(sz))).append(self.c_size_and_align(t).as_slice());
-              let extra = extra.append(self.c_mt(mt).as_slice());
+              let extra = extra.append(vec!(self.c_tydesc(ty)).as_slice());
               self.visit("evec_fixed", extra.as_slice())
           }
           ty::ty_vec(..) | ty::ty_str | ty::ty_trait(..) => fail!("unexpected unsized type"),
@@ -172,9 +172,8 @@ impl<'a, 'b> Reflector<'a, 'b> {
           }
           ty::ty_uniq(typ) => {
               match ty::get(typ).sty {
-                  ty::ty_vec(ref mt, None) => {
-                      let extra = Vec::new();
-                      let extra = extra.append(self.c_mt(mt).as_slice());
+                  ty::ty_vec(ty, None) => {
+                      let extra = vec!(self.c_tydesc(ty));
                       self.visit("evec_uniq", extra.as_slice())
                   }
                   ty::ty_str => self.visit("estr_uniq", &[]),
@@ -196,9 +195,8 @@ impl<'a, 'b> Reflector<'a, 'b> {
           }
           ty::ty_rptr(_, ref mt) => {
               match ty::get(mt.ty).sty {
-                  ty::ty_vec(ref mt, None) => {
-                      let extra = Vec::new();
-                      let extra = extra.append(self.c_mt(mt).as_slice());
+                  ty::ty_vec(ty, None) => {
+                      let extra = self.c_mt(&ty::mt{ty: ty, mutbl: mt.mutbl});
                       self.visit("evec_slice", extra.as_slice())
                   }
                   ty::ty_str => self.visit("estr_slice", &[]),

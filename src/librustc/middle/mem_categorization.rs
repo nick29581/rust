@@ -787,7 +787,7 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
         //!   the implicit index deref, if any (see above)
 
         let element_ty = match ty::index(base_cmt.ty) {
-          Some(ref mt) => mt.ty,
+          Some(ty) => ty,
           None => {
             self.tcx().sess.span_bug(
                 elt.span(),
@@ -871,7 +871,7 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
 
             match ty::get(slice_ty).sty {
                 ty::ty_rptr(r, ref mt) => match ty::get(mt.ty).sty {
-                    ty::ty_vec(slice_mt, None) => (slice_mt.mutbl, r),
+                    ty::ty_vec(_, None) => (mt.mutbl, r),
                     _ => vec_slice_info(tcx, pat, mt.ty),
                 },
 

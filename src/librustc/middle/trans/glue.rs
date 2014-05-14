@@ -296,8 +296,8 @@ fn make_drop_glue<'a>(bcx: &'a Block<'a>, v0: ValueRef, t: ty::t) -> &'a Block<'
         }
         ty::ty_uniq(content_ty) => {
             match ty::get(content_ty).sty {
-                ty::ty_vec(mt, None) => {
-                    tvec::make_drop_glue_unboxed(bcx, v0, mt.ty)
+                ty::ty_vec(ty, None) => {
+                    tvec::make_drop_glue_unboxed(bcx, v0, ty)
                 }
                 ty::ty_str => {
                     let unit_ty = ty::sequence_element_type(bcx.tcx(), t);

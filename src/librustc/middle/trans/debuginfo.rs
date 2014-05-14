@@ -2804,18 +2804,20 @@ fn type_metadata(cx: &CrateContext,
         ty::ty_box(pointee_type) => {
             at_box_metadata(cx, t, pointee_type, unique_type_id)
         }
-        ty::ty_vec(ref mt, Some(len)) => {
-            fixed_vec_metadata(cx, unique_type_id, mt.ty, len, usage_site_span)
+        ty::ty_vec(typ, Some(len)) => {
+            fixed_vec_metadata(cx, unique_type_id, typ, len, usage_site_span)
         }
-        ty::ty_uniq(pointee_type) => {
-            match ty::get(pointee_type).sty {
-                ty::ty_vec(ref mt, None) => {
-                    let vec_metadata = vec_slice_metadata(cx, t, mt.ty, usage_site_span);
+        ty::ty_uniq(typ) => {
+            match ty::get(typ).sty {
+                ty::ty_vec(typ, None) => {
+                    let vec_metadata =
+                        vec_slice_metadata(cx, t, typ, unique_type_id, usage_site_span);
                     pointer_type_metadata(cx, t, vec_metadata)
                 }
                 ty::ty_str => {
                     let i8_t = ty::mk_i8();
-                    let vec_metadata = vec_slice_metadata(cx, t, i8_t, usage_site_span);
+                    let vec_metadata =
+                        vec_slice_metadata(cx, t, i8_t, unique_type_id, usage_site_span);
                     pointer_type_metadata(cx, t, vec_metadata)
                 }
                 ty::ty_trait(box ty::TyTrait {
@@ -2838,8 +2840,8 @@ fn type_metadata(cx: &CrateContext,
         }
         ty::ty_ptr(ref mt) | ty::ty_rptr(_, ref mt) => {
             match ty::get(mt.ty).sty {
-                ty::ty_vec(ref mt, None) => {
-                    vec_slice_metadata(cx, t, mt.ty, unique_type_id, usage_site_span)
+                ty::ty_vec(typ, None) => {
+                    vec_slice_metadata(cx, t, typ, unique_type_id, usage_site_span)
                 }
                 ty::ty_str => {
                     vec_slice_metadata(cx, t, ty::mk_i8(), unique_type_id, usage_site_span)

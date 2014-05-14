@@ -130,8 +130,8 @@ pub fn sizing_type_of(cx: &CrateContext, t: ty::t) -> Type {
         ty::ty_bare_fn(..) => Type::i8p(cx),
         ty::ty_closure(..) => Type::struct_(cx, [Type::i8p(cx), Type::i8p(cx)], false),
 
-        ty::ty_vec(mt, Some(size)) => {
-            Type::array(&sizing_type_of(cx, mt.ty), size as u64)
+        ty::ty_vec(ty, Some(size)) => {
+            Type::array(&sizing_type_of(cx, ty), size as u64)
         }
 
         ty::ty_tup(..) | ty::ty_enum(..) => {
@@ -214,8 +214,8 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
 
       ty::ty_uniq(ty) | ty::ty_rptr(_, ty::mt{ty, ..}) => {
           match ty::get(ty).sty {
-              ty::ty_vec(mt, None) => {
-                  let p_ty = type_of(cx, mt.ty).ptr_to();
+              ty::ty_vec(ty, None) => {
+                  let p_ty = type_of(cx, ty).ptr_to();
                   let u_ty = Type::uint_from_ty(cx, ast::TyU);
                   Type::struct_(cx, [p_ty, u_ty], false)
               }
@@ -228,8 +228,8 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
           }
       }
 
-      ty::ty_vec(ref mt, Some(n)) => {
-          Type::array(&type_of(cx, mt.ty), n as u64)
+      ty::ty_vec(ty, Some(n)) => {
+          Type::array(&type_of(cx, ty), n as u64)
       }
 
       ty::ty_bare_fn(_) => {

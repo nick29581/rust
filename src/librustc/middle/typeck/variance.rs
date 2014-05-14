@@ -724,8 +724,8 @@ impl<'a> ConstraintContext<'a> {
                 self.add_constraints_from_mt(mt, variance);
             }
 
-            ty::ty_vec(ref mt, _) => {
-                self.add_constraints_from_mt(mt, variance);
+            ty::ty_vec(t, _) => {
+                self.add_constraints_from_ty(t, variance);
             }
 
             ty::ty_uniq(typ) | ty::ty_box(typ) => {
