@@ -254,9 +254,9 @@ fn enc_sty(w: &mut MemWriter, cx: &ctxt, st: &ty::sty) {
             enc_region(w, cx, r);
             enc_mt(w, cx, mt);
         }
-        ty::ty_vec(mt, sz) => {
+        ty::ty_vec(t, sz) => {
             mywrite!(w, "V");
-            enc_mt(w, cx, mt);
+            enc_ty(w, cx, t);
             mywrite!(w, "/");
             match sz {
                 Some(n) => mywrite!(w, "{}|", n),

@@ -2621,7 +2621,7 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
                     } else {
                         ast_expr_vstore_to_ty(fcx, &*ev, vst, ||
                             ty::mt{ ty: ty::mk_vec(tcx,
-                                                   ty::mt {ty: t, mutbl: mutability},
+                                                   t,
                                                    None),
                                                    mutbl: mutability })
                     }
@@ -2643,7 +2643,7 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
                     } else {
                         ast_expr_vstore_to_ty(fcx, &*ev, vst, ||
                             ty::mt{ ty: ty::mk_vec(tcx,
-                                                   ty::mt {ty: t, mutbl: mutability},
+                                                   t,
                                                    None),
                                                    mutbl: mutability})
                     }
@@ -3138,8 +3138,7 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
         for e in args.iter() {
             check_expr_has_type(fcx, &**e, t);
         }
-        let typ = ty::mk_vec(tcx, ty::mt {ty: t, mutbl: ast::MutImmutable},
-                             Some(args.len()));
+        let typ = ty::mk_vec(tcx, t, Some(args.len()));
         fcx.write_ty(id, typ);
       }
       ast::ExprRepeat(ref element, ref count_expr) => {
@@ -3155,8 +3154,7 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
             fcx.write_bot(id);
         }
         else {
-            let t = ty::mk_vec(tcx, ty::mt {ty: t, mutbl: ast::MutImmutable},
-                               Some(count));
+            let t = ty::mk_vec(tcx, t, Some(count));
             fcx.write_ty(id, t);
         }
       }
@@ -3225,9 +3223,9 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
                 autoderef(fcx, expr.span, raw_base_t, Some(base.id),
                           lvalue_pref, |base_t, _| ty::index(base_t));
               match field_ty {
-                  Some(mt) => {
+                  Some(ty) => {
                       check_expr_has_type(fcx, &**idx, ty::mk_uint());
-                      fcx.write_ty(id, mt.ty);
+                      fcx.write_ty(id, ty);
                       fcx.write_autoderef_adjustment(base.id, autoderefs);
                   }
                   None => {

@@ -102,7 +102,7 @@ impl<'f> Coerce<'f> {
         match ty::get(b).sty {
             ty::ty_rptr(_, mt_b) => {
                 match ty::get(mt_b.ty).sty {
-                    ty::ty_vec(mt_b, None) => {
+                    ty::ty_vec(_, None) => {
                         let unsize_and_ref = self.unpack_actual_value(a, |sty_a| {
                             self.coerce_unsized_with_borrow(a, sty_a, b, mt_b.mutbl)
                         });
@@ -272,14 +272,7 @@ impl<'f> Coerce<'f> {
 
         let inner_ty = match *sty_a {
             ty::ty_box(typ) | ty::ty_uniq(typ) => typ,
-            ty::ty_rptr(_, mt_a) => match ty::get(mt_a.ty).sty {
-                // Vomit. &[T] have two copies of the mutability - one in the
-                // reference and one in the vec. They must be the same.
-                ty::ty_vec(mt_vec, len) => ty::mk_vec(self.get_ref().infcx.tcx,
-                                                      ty::mt{ty: mt_vec.ty, mutbl: mutbl_b},
-                                                      len),
-                _ => mt_a.ty,
-            },
+            ty::ty_rptr(_, mt_a) =>  mt_a.ty,
             _ => {
                 return self.subtype(a, b);
             }
@@ -317,12 +310,12 @@ impl<'f> Coerce<'f> {
                b.inf_str(self.get_ref().infcx));
 
         match *sty_a {
-            ty::ty_vec(mt_a, Some(len)) => {
+            ty::ty_vec(t_a, Some(len)) => {
                 let sub = Sub(self.get_ref().clone());
                 let coercion = Coercion(self.get_ref().trace.clone());
                 let r_borrow = self.get_ref().infcx.next_region_var(coercion);
                 let unsized_ty = ty::mk_slice(self.get_ref().infcx.tcx, r_borrow,
-                                              mt {ty: mt_a.ty, mutbl: mutbl_b});
+                                              mt {ty: t_a, mutbl: mutbl_b});
 
                 if_ok!(sub.tys(unsized_ty, b));
                 Ok(Some(AutoDerefRef(AutoDerefRef {
@@ -352,7 +345,7 @@ impl<'f> Coerce<'f> {
                 ty::ty_uniq(_) => {
                     self.unpack_actual_value(t_a, |sty_a| {
                         // TODO refactor this crap
-                        match self.unsize_ty(sty_a, ast::MutMutable) {
+                        match self.unsize_ty(sty_a) {
                             Some((ty, kind)) => {
                                 let ty = ty::mk_uniq(self.get_ref().infcx.tcx, ty);
                                 if_ok!(sub.tys(ty, b));
@@ -367,7 +360,7 @@ impl<'f> Coerce<'f> {
                 }
                 ty::ty_rptr(_, mt_b) => {
                     self.unpack_actual_value(t_a, |sty_a| {
-                        match self.unsize_ty(sty_a, mt_b.mutbl) {
+                        match self.unsize_ty(sty_a) {
                             Some((ty, kind)) => {
                                 let coercion = Coercion(self.get_ref().trace.clone());
                                 let r_borrow = self.get_ref().infcx.next_region_var(coercion);
@@ -387,7 +380,7 @@ impl<'f> Coerce<'f> {
             ty::ty_rptr(_r_a, mt_a) => match ty::get(b).sty {
                 ty::ty_rptr(_, mt_b) => {
                     self.unpack_actual_value(mt_a.ty, |sty_a| {
-                        match self.unsize_ty(sty_a, mt_b.mutbl) {
+                        match self.unsize_ty(sty_a) {
                             Some((ty, kind)) => {
                                 let coercion = Coercion(self.get_ref().trace.clone());
                                 let r_borrow = self.get_ref().infcx.next_region_var(coercion);
@@ -413,12 +406,11 @@ impl<'f> Coerce<'f> {
     // performed to unsize it.
     // E.g., `[T, ..n]` -> `([T], UnsizeLength(n))`
     fn unsize_ty(&self,
-                 sty_a: &ty::sty,
-                 b_mutbl: ast::Mutability)
+                 sty_a: &ty::sty)
                  -> Option<(ty::t, ty::UnsizeKind)> {
         match *sty_a {
-            ty::ty_vec(mt_a, Some(len)) => {
-                let ty = ty::mk_vec(self.get_ref().infcx.tcx, ty::mt{ty: mt_a.ty, mutbl: b_mutbl}, None);
+            ty::ty_vec(t_a, Some(len)) => {
+                let ty = ty::mk_vec(self.get_ref().infcx.tcx, t_a, None);
                 Some((ty, ty::UnsizeLength(len)))
             }
             _ => None

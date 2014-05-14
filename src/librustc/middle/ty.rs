@@ -760,7 +760,7 @@ pub enum sty {
     ty_box(t),
     ty_uniq(t),
     ty_str,
-    ty_vec(mt, Option<uint>),  // Second field is length.
+    ty_vec(t, Option<uint>), // Second field is length.
     ty_ptr(mt),
     ty_rptr(Region, mt),
     ty_bare_fn(BareFnTy),
@@ -1228,10 +1228,10 @@ pub fn mk_t(cx: &ctxt, st: sty) -> t {
       &ty_trait(box ty::TyTrait { ref substs, .. }) => {
           flags |= sflags(substs);
       }
-      &ty_box(tt) | &ty_uniq(tt) => {
+      &ty_box(tt) | &ty_uniq(tt) | &ty_vec(tt, _) => {
         flags |= get(tt).flags
       }
-      &ty_ptr(ref m) | &ty_vec(ref m, _) => {
+      &ty_ptr(ref m) => {
         flags |= get(m.ty).flags;
       }
       &ty_rptr(r, ref m) => {
@@ -1413,14 +1413,14 @@ pub fn mk_nil_ptr(cx: &ctxt) -> t {
     mk_ptr(cx, mt {ty: mk_nil(), mutbl: ast::MutImmutable})
 }
 
-pub fn mk_vec(cx: &ctxt, tm: mt, sz: Option<uint>) -> t {
-    mk_t(cx, ty_vec(tm, sz))
+pub fn mk_vec(cx: &ctxt, t: t, sz: Option<uint>) -> t {
+    mk_t(cx, ty_vec(t, sz))
 }
 
 pub fn mk_slice(cx: &ctxt, r: Region, tm: mt) -> t {
     mk_rptr(cx, r,
             mt {
-                ty: mk_vec(cx, tm, None),
+                ty: mk_vec(cx, tm.ty, None),
                 mutbl: tm.mutbl
             })
 }
@@ -1503,10 +1503,8 @@ pub fn maybe_walk_ty(ty: t, f: |t| -> bool) {
     }
     match get(ty).sty {
         ty_nil | ty_bot | ty_bool | ty_char | ty_int(_) | ty_uint(_) | ty_float(_) |
-        ty_str | ty_infer(_) | ty_param(_) | ty_err => {
-        }
-        ty_box(ty) | ty_uniq(ty) => maybe_walk_ty(ty, f),
-        ty_ptr(ref tm) | ty_rptr(_, ref tm) | ty_vec(ref tm, _) => {
+        ty_box(ty) | ty_uniq(ty) | ty_vec(ty, _) => maybe_walk_ty(ty, f),
+        ty_ptr(ref tm) | ty_rptr(_, ref tm) => {
             maybe_walk_ty(tm.ty, f);
         }
         ty_enum(_, ref substs) | ty_struct(_, ref substs) |
@@ -1613,10 +1611,10 @@ pub fn type_is_simd(cx: &ctxt, ty: t) -> bool {
 
 pub fn sequence_element_type(cx: &ctxt, ty: t) -> t {
     match get(ty).sty {
-        ty_vec(mt, Some(_)) => mt.ty,
+        ty_vec(ty, Some(_)) => ty,
         ty_ptr(mt{ty: t, ..}) | ty_rptr(_, mt{ty: t, ..}) |
         ty_box(t) | ty_uniq(t) => match get(t).sty {
-            ty_vec(mt, _) => mt.ty,
+            ty_vec(ty, _) => ty,
             ty_str => mk_mach_uint(ast::TyU8),
             _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}", ::util::ppaux::ty_to_str(cx, ty)).as_slice()),
         },
@@ -2104,8 +2102,8 @@ pub fn type_contents(cx: &ctxt, ty: t) -> TypeContents {
                 }
             }
 
-            ty_vec(mt, _) => {
-                tc_mt(cx, mt, cache)
+            ty_vec(t, _) => {
+                tc_ty(cx, t, cache)
             }
 
             ty_struct(did, ref substs) => {
@@ -2315,7 +2313,7 @@ pub fn is_instantiable(cx: &ctxt, r_ty: t) -> bool {
             // normal vectors, since they don't necessarily have the
             // possibility to have length zero.
             ty_vec(_, Some(0)) => false, // don't need no contents
-            ty_vec(mt, Some(_)) => type_requires(cx, seen, r_ty, mt.ty),
+            ty_vec(ty, Some(_)) => type_requires(cx, seen, r_ty, ty),
 
             ty_nil |
             ty_bot |
@@ -2451,8 +2449,8 @@ pub fn is_type_representable(cx: &ctxt, sp: Span, ty: t) -> Representability {
             }
             // Fixed-length vectors.
             // FIXME(#11924) Behavior undecided for zero-length vectors.
-            ty_vec(mt, Some(_)) => {
-                type_structurally_recursive(cx, sp, seen, mt.ty)
+            ty_vec(ty, Some(_)) => {
+                type_structurally_recursive(cx, sp, seen, ty)
             }
 
             // Push struct and enum def-ids onto `seen` before recursing.
@@ -2609,13 +2607,17 @@ pub fn deref(t: t, explicit: bool) -> Option<mt> {
 }
 
 // Returns the type of t[i]
-pub fn index(t: t) -> Option<mt> {
-    match get(t).sty {
-        ty_vec(mt, _) => Some(mt),
-        ty_ptr(mt{ty: t, ..}) | ty_rptr(_, mt{ty: t, ..}) |
+pub fn index(ty: t) -> Option<t> {
+    match get(ty).sty {
+        ty_vec(t, _) => Some(t),
+        ty_ptr(mt_inner) | ty_rptr(_, mt_inner) => match get(mt_inner.ty).sty {
+            ty_vec(t, _) => Some(t),
+            ty_str => Some(mk_u8()),
+            _ => None,
+        },
         ty_box(t) | ty_uniq(t) => match get(t).sty {
-            ty_vec(mt, _) => Some(mt),
-            ty_str => Some(mt {ty: mk_u8(), mutbl: ast::MutImmutable}),
+            ty_vec(t, _) => Some(t),
+            ty_str => Some(mk_u8()),
             _ => None,
         },
         _ => None
@@ -2964,7 +2966,7 @@ pub fn adjust_ty(cx: &ctxt,
         match get(ty).sty {
             ty_uniq(t) | ty_ptr(mt{ty: t, ..}) |
             ty_rptr(_, mt{ty: t, ..}) => match get(t).sty {
-                ty::ty_vec(mt, None) => ty::mk_slice(cx, r, ty::mt {ty: mt.ty, mutbl: m}),
+                ty::ty_vec(t, None) => ty::mk_slice(cx, r, ty::mt {ty: t, mutbl: m}),
                 ty::ty_str => ty::mk_str_slice(cx, r, m),
                 _ => {
                     cx.sess.span_bug(
@@ -2989,7 +2991,7 @@ pub fn adjust_ty(cx: &ctxt,
                   ty: ty::t) -> ty::t {
         match get(ty).sty {
             ty_uniq(t) | ty_rptr(_, mt{ty: t, ..}) => match get(t).sty {
-                ty::ty_vec(mt, Some(_)) => ty::mk_slice(cx, r, ty::mt {ty: mt.ty, mutbl: m}),
+                ty::ty_vec(t, Some(_)) => ty::mk_slice(cx, r, ty::mt {ty: t, mutbl: m}),
                 _ => {
                     cx.sess.span_bug(
                         span,
@@ -2997,7 +2999,7 @@ pub fn adjust_ty(cx: &ctxt,
                 }
             },
 
-            ty_vec(mt, Some(_)) => ty::mk_vec(cx, ty::mt {ty: mt.ty, mutbl: m}, None),
+            ty_vec(t, Some(_)) => ty::mk_vec(cx, t, None),
 
             ref s => {
                 cx.sess.span_bug(
@@ -3013,7 +3015,7 @@ pub fn adjust_ty(cx: &ctxt,
                        ty: ty::t) -> ty::t {
         match get(ty).sty {
             ty_uniq(t) => match get(t).sty {
-                ty::ty_vec(mt, Some(_)) => ty::mk_uniq(cx, mt.ty),
+                ty::ty_vec(t, Some(_)) => ty::mk_uniq(cx, ty::mk_vec(cx, t, None)),
                 _ => {
                     cx.sess.span_bug(
                         span,
@@ -4643,15 +4645,12 @@ pub fn hash_crate_independent(tcx: &ctxt, t: t, svh: &Svh) -> u64 {
             ty_uniq(_) => {
                 byte!(10);
             }
-            ty_vec(m, Some(n)) => {
+            ty_vec(_, Some(n)) => {
                 byte!(11);
-                mt(&mut state, m);
                 n.hash(&mut state);
-                1u8.hash(&mut state);
             }
-            ty_vec(m, None) => {
+            ty_vec(_, None) => {
                 byte!(11);
-                mt(&mut state, m);
                 0u8.hash(&mut state);
             }
             ty_ptr(m) => {
