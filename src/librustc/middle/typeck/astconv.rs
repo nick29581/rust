@@ -463,12 +463,6 @@ enum PointerTy {
     Uniq
 }
 
-fn ast_ty_to_mt<AC:AstConv, RS:RegionScope>(this: &AC,
-                                            rscope: &RS,
-                                            ty: &ast::Ty) -> ty::mt {
-    ty::mt {ty: ast_ty_to_ty(this, rscope, ty), mutbl: ast::MutImmutable}
-}
-
 // Handle `~`, `Box`, and `&` being able to mean strs and vecs.
 // If a_seq_ty is a str or a vec, make it a str/vec.
 // Also handle first-class trait types.
@@ -485,11 +479,8 @@ fn mk_pointer<AC:AstConv,
 
     match a_seq_ty.ty.node {
         ast::TyVec(ty) => {
-            let mut mt = ast_ty_to_mt(this, rscope, ty);
-            if a_seq_ty.mutbl == ast::MutMutable {
-                mt.mutbl = ast::MutMutable;
-            }
-            return constr(ty::mk_vec(tcx, mt, None));
+            let ty = ast_ty_to_ty(this, rscope, ty);
+            return constr(ty::mk_vec(tcx, ty, None));
         }
         ast::TyPath(ref path, ref bounds, id) => {
             // Note that the "bounds must be empty if path is not a trait"
@@ -581,7 +572,7 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:RegionScope>(
             ast::TyVec(ty) => {
                 tcx.sess.span_err(ast_ty.span, "bare `[]` is not a type");
                 // return /something/ so they can at least get more errors
-                let vec_ty = ty::mk_vec(tcx, ast_ty_to_mt(this, rscope, ty), None);
+                let vec_ty = ty::mk_vec(tcx, ast_ty_to_ty(this, rscope, ty), None);
                 ty::mk_uniq(tcx, vec_ty)
             }
             ast::TyPtr(ref mt) => {
@@ -714,10 +705,10 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:RegionScope>(
                     Ok(ref r) => {
                         match *r {
                             const_eval::const_int(i) =>
-                                ty::mk_vec(tcx, ast_ty_to_mt(this, rscope, ty),
+                                ty::mk_vec(tcx, ast_ty_to_ty(this, rscope, ty),
                                            Some(i as uint)),
                             const_eval::const_uint(i) =>
-                                ty::mk_vec(tcx, ast_ty_to_mt(this, rscope, ty),
+                                ty::mk_vec(tcx, ast_ty_to_ty(this, rscope, ty),
                                            Some(i as uint)),
                             _ => {
                                 tcx.sess.span_fatal(

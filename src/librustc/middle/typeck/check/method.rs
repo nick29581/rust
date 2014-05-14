@@ -825,15 +825,15 @@ impl<'a> LookupContext<'a> {
 
     // Takes an [T] - an unwrapped DST pointer (either ~ or &)
     // [T] to &[T] or &&[T] (note that we started with a &[T] or ~[T] which has been implicitly derefed)
-    fn auto_slice_vec(&self, mt: ty::mt, autoderefs: uint) -> Option<MethodCallee> {
+    fn auto_slice_vec(&self, ty: ty::t, autoderefs: uint) -> Option<MethodCallee> {
         let tcx = self.tcx();
-        debug!("auto_slice_vec {}", ppaux::ty_to_str(tcx, mt.ty));
+        debug!("auto_slice_vec {}", ppaux::ty_to_str(tcx, ty));
 
         // First try to borrow to a slice
         let entry = self.search_for_some_kind_of_autorefd_method(
             AutoBorrowVec, autoderefs, [MutImmutable, MutMutable],
             |m,r| ty::mk_slice(tcx, r,
-                               ty::mt {ty:mt.ty, mutbl:m}));
+                               ty::mt {ty:ty, mutbl:m}));
 
         if entry.is_some() {
             return entry;
@@ -844,7 +844,7 @@ impl<'a> LookupContext<'a> {
             AutoBorrowVecRef, autoderefs, [MutImmutable, MutMutable],
             |m,r| {
                 let slice_ty = ty::mk_slice(tcx, r,
-                                            ty::mt {ty:mt.ty, mutbl:m});
+                                            ty::mt {ty:ty, mutbl:m});
                 // NB: we do not try to autoref to a mutable
                 // pointer. That would be creating a pointer
                 // to a temporary pointer (the borrowed
@@ -855,15 +855,15 @@ impl<'a> LookupContext<'a> {
     }
 
     // [T, ..len] -> [T] or &[T] or &&[T]
-    fn auto_unsize_vec(&self, mt: ty::mt, autoderefs: uint, len: uint) -> Option<MethodCallee> {
+    fn auto_unsize_vec(&self, ty: ty::t, autoderefs: uint, len: uint) -> Option<MethodCallee> {
         let tcx = self.tcx();
-        debug!("auto_slice_vec {}", ppaux::ty_to_str(tcx, mt.ty));
+        debug!("auto_slice_vec {}", ppaux::ty_to_str(tcx, ty));
 
         // First try to borrow to a slice
         let entry = self.search_for_some_kind_of_autorefd_method(
             |r, m| AutoUnsize(r, m, ty::UnsizeLength(len)),
             autoderefs, [MutImmutable, MutMutable],
-            |m, _r| ty::mk_vec(tcx, ty::mt {ty:mt.ty, mutbl:m}, None));
+            |_m, _r| ty::mk_vec(tcx, ty, None));
 
         if entry.is_some() {
             return entry;
@@ -873,7 +873,7 @@ impl<'a> LookupContext<'a> {
         let entry = self.search_for_some_kind_of_autorefd_method(
             |r, m| AutoUnsizeRef(r, m, ty::UnsizeLength(len)),
             autoderefs, [MutImmutable, MutMutable],
-            |m, r|  ty::mk_slice(tcx, r, ty::mt {ty:mt.ty, mutbl:m}));
+            |m, r|  ty::mk_slice(tcx, r, ty::mt {ty:ty, mutbl:m}));
 
         if entry.is_some() {
             return entry;
@@ -884,7 +884,7 @@ impl<'a> LookupContext<'a> {
             |r, m| AutoPtr(r, m, Some( box AutoUnsizeRef(r, m, ty::UnsizeLength(len)))),
             autoderefs, [MutImmutable, MutMutable],
             |m, r| {
-                let slice_ty = ty::mk_slice(tcx, r, ty::mt {ty:mt.ty, mutbl:m});
+                let slice_ty = ty::mk_slice(tcx, r, ty::mt {ty:ty, mutbl:m});
                 ty::mk_rptr(tcx, r, ty::mt {ty:slice_ty, mutbl:MutImmutable})
             })
     }
@@ -924,18 +924,18 @@ impl<'a> LookupContext<'a> {
         let sty = ty::get(self_ty).sty.clone();
         match sty {
             ty_rptr(_, mt) => match ty::get(mt.ty).sty {
-                ty_vec(mt, None) => self.auto_slice_vec(mt, autoderefs),
-                ty_vec(mt, Some(len)) => self.auto_unsize_vec(mt, autoderefs, len),
+                ty_vec(ty, None) => self.auto_slice_vec(ty, autoderefs),
+                ty_vec(ty, Some(len)) => self.auto_unsize_vec(ty, autoderefs, len),
                 _ => None
             },
             ty_uniq(t) => match ty::get(t).sty {
-                ty_vec(mt, None) => self.auto_slice_vec(mt, autoderefs),
-                ty_vec(mt, Some(len)) => self.auto_unsize_vec(mt, autoderefs, len),
+                ty_vec(ty, None) => self.auto_slice_vec(ty, autoderefs),
+                ty_vec(ty, Some(len)) => self.auto_unsize_vec(ty, autoderefs, len),
                 ty_str => self.auto_slice_str(autoderefs),
                 _ => None
             },
 
-            ty_vec(mt, Some(len)) => self.auto_unsize_vec(mt, autoderefs, len),
+            ty_vec(ty, Some(len)) => self.auto_unsize_vec(ty, autoderefs, len),
 
             ty_trait(box ty::TyTrait {
                     def_id: trt_did,

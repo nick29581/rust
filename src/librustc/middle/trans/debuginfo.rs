@@ -2155,11 +2155,11 @@ fn type_metadata(cx: &CrateContext,
         ty::ty_box(typ) => {
             create_pointer_to_box_metadata(cx, t, typ)
         }
-        ty::ty_vec(ref mt, Some(len)) => fixed_vec_metadata(cx, mt.ty, len, usage_site_span),
+        ty::ty_vec(typ, Some(len)) => fixed_vec_metadata(cx, typ, len, usage_site_span),
         ty::ty_uniq(typ) => {
             match ty::get(typ).sty {
-                ty::ty_vec(ref mt, None) => {
-                    let vec_metadata = vec_slice_metadata(cx, t, mt.ty, usage_site_span);
+                ty::ty_vec(typ, None) => {
+                    let vec_metadata = vec_slice_metadata(cx, t, typ, usage_site_span);
                     pointer_type_metadata(cx, t, vec_metadata)
                 }
                 ty::ty_str => {
@@ -2175,7 +2175,7 @@ fn type_metadata(cx: &CrateContext,
         }
         ty::ty_ptr(ref mt) | ty::ty_rptr(_, ref mt) => {
             match ty::get(mt.ty).sty {
-                ty::ty_vec(ref mt, None) => vec_slice_metadata(cx, t, mt.ty, usage_site_span),
+                ty::ty_vec(typ, None) => vec_slice_metadata(cx, t, typ, usage_site_span),
                 ty::ty_str => {
                     let i8_t = ty::mk_i8();
                     vec_slice_metadata(cx, t, i8_t, usage_site_span)
