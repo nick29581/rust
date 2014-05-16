@@ -116,7 +116,8 @@ impl<A: Clone> Clone for ~[A] {
                 let slice: Slice<A> = Slice{data: ret as *A, len: len};
                 mem::transmute(slice)
             }
-        }    }
+        }
+    }
 
     // NOTE: remove after snapshot
     #[cfg(stage0)]

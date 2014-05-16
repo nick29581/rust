@@ -1137,13 +1137,19 @@ fn link_autoref(rcx: &Rcx,
     debug!("expr_cmt={}", expr_cmt.repr(rcx.tcx()));
 
     match *autoref {
-        ty::AutoPtr(r, m, _) => {
-            link_region(rcx, expr.span, r,
+        ty::AutoPtr(r, m, ref a) => {
+            match *a {
+                Some(box ref a) => {
+                    link_autoref(rcx, expr, autoderefs, a)
+                }
+                None => {
+                    link_region(rcx, expr.span, r,
                         ty::BorrowKind::from_mutbl(m), expr_cmt);
+                }
+            }
         }
 
         ty::AutoBorrowVec(r, m) |
-        ty::AutoBorrowVecRef(r, m) |
         ty::AutoUnsizeRef(r, m, _) |
         ty::AutoUnsize(r, m, _) => {
             let cmt_index = mc.cat_index(expr, expr_cmt, autoderefs+1);

@@ -316,11 +316,12 @@ impl<'f> Coerce<'f> {
                 let r_borrow = self.get_ref().infcx.next_region_var(coercion);
                 let unsized_ty = ty::mk_slice(self.get_ref().infcx.tcx, r_borrow,
                                               mt {ty: t_a, mutbl: mutbl_b});
-
-                if_ok!(sub.tys(unsized_ty, b));
+                if_ok!(self.get_ref().infcx.try(|| sub.tys(unsized_ty, b)));
                 Ok(Some(AutoDerefRef(AutoDerefRef {
                     autoderefs: 0,
-                    autoref: Some(ty::AutoUnsizeRef(r_borrow, mutbl_b, ty::UnsizeLength(len)))
+                    autoref: Some(ty::AutoUnsizeRef(r_borrow,
+                                                    mutbl_b,
+                                                    ty::UnsizeLength(len)))
                 })))
             }
             _ => Err(ty::terr_mismatch)
@@ -338,66 +339,50 @@ impl<'f> Coerce<'f> {
                a.inf_str(self.get_ref().infcx), sty_a,
                b.inf_str(self.get_ref().infcx));
 
+        // Note, we want to avoid unnecessary unsizing. We don't want to coerce to
+        // a DST unless we have to. This currently comes out in the wash since
+        // we can't unify [T] with U. But to properly support DST, we need to allow
+        // that, at which point we will need extra checks on b here.
+
         let sub = Sub(self.get_ref().clone());
 
-        match *sty_a {
-            ty::ty_uniq(t_a) => match ty::get(b).sty {
-                ty::ty_uniq(_) => {
-                    self.unpack_actual_value(t_a, |sty_a| {
-                        // TODO refactor this crap
-                        match self.unsize_ty(sty_a) {
-                            Some((ty, kind)) => {
-                                let ty = ty::mk_uniq(self.get_ref().infcx.tcx, ty);
-                                if_ok!(sub.tys(ty, b));
-                                Ok(Some(AutoDerefRef(AutoDerefRef {
-                                    autoderefs: 0,
-                                    autoref: Some(ty::AutoUnsizeUniq(kind))
-                                })))
-                            }
-                            _ => Err(ty::terr_mismatch)
+        let sty_b = &ty::get(b).sty;
+        match (sty_a, sty_b) {
+            (&ty::ty_uniq(t_a), &ty::ty_rptr(_, mt_b)) |
+            (&ty::ty_rptr(_, ty::mt{ty: t_a, ..}), &ty::ty_rptr(_, mt_b)) => {
+                self.unpack_actual_value(t_a, |sty_a| {
+                    match self.unsize_ty(sty_a) {
+                        Some((ty, kind)) => {
+                            let coercion = Coercion(self.get_ref().trace.clone());
+                            let r_borrow = self.get_ref().infcx.next_region_var(coercion);
+                            let ty = ty::mk_rptr(self.get_ref().infcx.tcx,
+                                                 r_borrow,
+                                                 ty::mt{ty: ty, mutbl: mt_b.mutbl});
+                            if_ok!(self.get_ref().infcx.try(|| sub.tys(ty, b)));
+                            Ok(Some(AutoDerefRef(AutoDerefRef {
+                                autoderefs: 0,
+                                autoref: Some(ty::AutoUnsize(r_borrow, mt_b.mutbl, kind))
+                            })))
                         }
-                    })
-                }
-                ty::ty_rptr(_, mt_b) => {
-                    self.unpack_actual_value(t_a, |sty_a| {
-                        match self.unsize_ty(sty_a) {
-                            Some((ty, kind)) => {
-                                let coercion = Coercion(self.get_ref().trace.clone());
-                                let r_borrow = self.get_ref().infcx.next_region_var(coercion);
-                                let ty = ty::mk_rptr(self.get_ref().infcx.tcx, r_borrow, ty::mt{ty: ty, mutbl: mt_b.mutbl});
-                                if_ok!(sub.tys(ty, b));
-                                Ok(Some(AutoDerefRef(AutoDerefRef {
-                                    autoderefs: 0,
-                                    autoref: Some(ty::AutoUnsize(r_borrow, mt_b.mutbl, kind))
-                                })))
-                            }
-                            _ => Err(ty::terr_mismatch)
+                        _ => Err(ty::terr_mismatch)
+                    }
+                })
+            }
+            (&ty::ty_uniq(t_a), &ty::ty_uniq(_)) => {
+                self.unpack_actual_value(t_a, |sty_a| {
+                    match self.unsize_ty(sty_a) {
+                        Some((ty, kind)) => {
+                            let ty = ty::mk_uniq(self.get_ref().infcx.tcx, ty);
+                            if_ok!(self.get_ref().infcx.try(|| sub.tys(ty, b)));
+                            Ok(Some(AutoDerefRef(AutoDerefRef {
+                                autoderefs: 0,
+                                autoref: Some(ty::AutoUnsizeUniq(kind))
+                            })))
                         }
-                    })
-                }
-                _ => Err(ty::terr_mismatch)
-            },
-            ty::ty_rptr(_r_a, mt_a) => match ty::get(b).sty {
-                ty::ty_rptr(_, mt_b) => {
-                    self.unpack_actual_value(mt_a.ty, |sty_a| {
-                        match self.unsize_ty(sty_a) {
-                            Some((ty, kind)) => {
-                                let coercion = Coercion(self.get_ref().trace.clone());
-                                let r_borrow = self.get_ref().infcx.next_region_var(coercion);
-                                let ty = ty::mk_rptr(self.get_ref().infcx.tcx, r_borrow, ty::mt{ty: ty, mutbl: mt_b.mutbl});
-                                if_ok!(sub.tys(ty, b));
-                                Ok(Some(AutoDerefRef(AutoDerefRef {
-                                    autoderefs: 0,
-                                    autoref: Some(ty::AutoUnsize(r_borrow, mt_b.mutbl, kind))
-                                })))
-                            }
-                            _ => Err(ty::terr_mismatch)
-                        }
-                    })
-                }
-                _ => Err(ty::terr_mismatch)
-            },
-
+                        _ => Err(ty::terr_mismatch)
+                    }
+                })
+            }
             _ => Err(ty::terr_mismatch)
         }
     }

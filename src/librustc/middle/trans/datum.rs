@@ -514,6 +514,12 @@ impl Datum<Lvalue> {
 
         tvec::get_base_and_len(bcx, self.val, self.ty)
     }
+
+    pub fn get_vec_base<'a>(&self, bcx: &'a Block<'a>) -> ValueRef {
+        //! Converts a vector into the slice pair.
+
+        tvec::get_base(bcx, self.val, self.ty)
+    }
 }
 
 fn load<'a>(bcx: &'a Block<'a>, llptr: ValueRef, ty: ty::t) -> ValueRef {

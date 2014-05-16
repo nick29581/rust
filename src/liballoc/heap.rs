@@ -69,6 +69,11 @@ pub unsafe fn reallocate_inplace(ptr: *mut u8, size: uint, align: uint,
 /// the value returned by `usable_size` for the requested size.
 #[inline]
 pub unsafe fn deallocate(ptr: *mut u8, size: uint, align: uint) {
+    // FIXME(14395) This is only required for DST ~[T], it should be removed once
+    // we fix that representation to not use null pointers.
+    if ptr.is_null() {
+        return;
+    }
     imp::deallocate(ptr, size, align)
 }
 
