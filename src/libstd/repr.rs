@@ -225,7 +225,7 @@ impl<'a> ReprVisitor<'a> {
     }
 
     #[cfg(not(stage0))]
-    pub fn write_unboxed_vec_repr(&mut self, _: uint, v: &raw::Slice<()>, inner: *TyDesc) -> bool {
+    pub fn write_unboxed_vec_repr(&mut self, v: &raw::Slice<()>, inner: *TyDesc) -> bool {
         let size = unsafe {
             if (*inner).size == 0 { 1 } else { (*inner).size }
         };
@@ -302,6 +302,8 @@ impl<'a> TyVisitor for ReprVisitor<'a> {
         })
     }
 
+    // NOTE: remove after snapshot
+    #[cfg(stage0)]
     fn visit_estr_box(&mut self) -> bool {
         true
     }
@@ -315,6 +317,8 @@ impl<'a> TyVisitor for ReprVisitor<'a> {
     }
 
     // Type no longer exists, vestigial function.
+    // NOTE: remove after snapshot
+    #[cfg(stage0)]
     fn visit_estr_fixed(&mut self, _n: uint, _sz: uint,
                         _align: uint) -> bool { fail!(); }
 
@@ -352,19 +356,10 @@ impl<'a> TyVisitor for ReprVisitor<'a> {
     }
 
     #[cfg(not(stage0))]
-    fn visit_evec_box(&mut self, mtbl: uint, inner: *TyDesc) -> bool {
-        self.get::<&raw::Box<raw::Slice<()>>>(|this, b| {
-            try!(this, this.writer.write(['@' as u8]));
-            this.write_mut_qualifier(mtbl);
-            this.write_unboxed_vec_repr(mtbl, &b.data, inner)
-        })
-    }
-
-    #[cfg(not(stage0))]
-    fn visit_evec_uniq(&mut self, mtbl: uint, inner: *TyDesc) -> bool {
+    fn visit_evec_uniq(&mut self, inner: *TyDesc) -> bool {
         self.get::<raw::Slice<()>>(|this, b| {
             try!(this, this.writer.write(['~' as u8]));
-            this.write_unboxed_vec_repr(mtbl, b, inner)
+            this.write_unboxed_vec_repr(b, inner)
         })
     }
 
@@ -398,6 +393,8 @@ impl<'a> TyVisitor for ReprVisitor<'a> {
         })
     }
 
+    // NOTE: remove after snapshot
+    #[cfg(stage0)]
     fn visit_evec_fixed(&mut self, n: uint, sz: uint, _align: uint,
                         _: uint, inner: *TyDesc) -> bool {
         let assumed_size = if sz == 0 { n } else { sz };
@@ -405,6 +402,16 @@ impl<'a> TyVisitor for ReprVisitor<'a> {
             this.write_vec_range(b, assumed_size, inner)
         })
     }
+
+    #[cfg(not(stage0))]
+    fn visit_evec_fixed(&mut self, n: uint, sz: uint, _align: uint,
+                        inner: *TyDesc) -> bool {
+        let assumed_size = if sz == 0 { n } else { sz };
+        self.get::<()>(|this, b| {
+            this.write_vec_range(b, assumed_size, inner)
+        })
+    }
+
 
     fn visit_enter_rec(&mut self, _n_fields: uint,
                        _sz: uint, _align: uint) -> bool {

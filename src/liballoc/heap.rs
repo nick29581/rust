@@ -97,6 +97,11 @@ pub unsafe fn reallocate_inplace(ptr: *mut u8, size: uint, align: uint, old_size
 #[inline]
 #[allow(unused_variable)] // for the parameter names in the documentation
 pub unsafe fn deallocate(ptr: *mut u8, size: uint, align: uint) {
+    // FIXME(14395) This is only required for DST ~[T], it should be removed once
+    // we fix that representation to not use null pointers.
+    if ptr.is_null() {
+        return;
+    }
     je_dallocx(ptr as *mut c_void, mallocx_align(align))
 }
 

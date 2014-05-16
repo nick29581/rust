@@ -382,10 +382,12 @@ pub fn super_tys<C:Combine>(this: &C, a: ty::t, b: ty::t) -> cres<ty::t> {
                                    result: ty::t) -> cres<ty::t> {
         match (&ty::get(a_inner).sty, &ty::get(b_inner).sty) {
             (&ty::ty_vec(_, None), &ty::ty_vec(_, None)) |
-            (&ty::ty_str, &ty::ty_str) => Ok(result),
+            (&ty::ty_str, &ty::ty_str)=> Ok(result),
             (&ty::ty_vec(_, None), _) | (_, &ty::ty_vec(_, None)) |
             (&ty::ty_str, _) | (_, &ty::ty_str)
-                => Err(ty::terr_sorts(expected_found(this, a, b))),
+                => {
+                    Err(ty::terr_sorts(expected_found(this, a, b)))
+                }
             _ => Ok(result),
         }
     }
