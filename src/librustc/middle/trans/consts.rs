@@ -242,7 +242,7 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                             };
                             match *autoref {
                                 ty::AutoUnsafe(m) |
-                                ty::AutoPtr(ty::ReStatic, m, _) => {
+                                ty::AutoPtr(ty::ReStatic, m, None) => {
                                     assert!(m != ast::MutMutable);
                                     llconst = llptr;
                                 }
@@ -278,10 +278,8 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                                             ], false);
                                         }
                                         _ => cx.sess().span_bug(e.span,
-                                                                       format!("unimplemented \
-                                                                                type in const unsize \
-                                                                                {}",
-                                                                               ty_to_str(cx.tcx(), ety)).as_slice())
+                                            format!("unimplemented type in const unsize {}",
+                                                    ty_to_str(cx.tcx(), ety)).as_slice())
                                     }
                                 }
                                 _ => {
@@ -455,6 +453,9 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                       ty::ty_vec(_, None) | ty::ty_str => {
                           let e1 = const_get_elt(cx, bv, [0]);
                           (const_deref_ptr(cx, e1), const_get_elt(cx, bv, [1]))
+                      },
+                      ty::ty_vec(_, Some(u)) => {
+                          (const_deref_ptr(cx, bv), C_uint(cx, u))
                       },
                       _ => cx.sess().span_bug(base.span,
                                               "index-expr base must be a vector or string type")

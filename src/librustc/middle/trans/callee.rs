@@ -826,7 +826,8 @@ pub fn trans_arg_datum<'a>(
             let llformal_arg_ty = type_of::type_of_explicit_arg(ccx, formal_arg_ty);
             debug!("casting actual type ({}) to match formal ({})",
                    bcx.val_to_str(val), bcx.llty_str(llformal_arg_ty));
-            debug!("Rust types: {}; {}", ty_to_str(bcx.tcx(), arg_datum_ty), ty_to_str(bcx.tcx(), formal_arg_ty));
+            debug!("Rust types: {}; {}", ty_to_str(bcx.tcx(), arg_datum_ty),
+                                         ty_to_str(bcx.tcx(), formal_arg_ty));
             val = PointerCast(bcx, val, llformal_arg_ty);
         }
     }

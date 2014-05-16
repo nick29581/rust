@@ -776,7 +776,7 @@ impl<'a> LookupContext<'a> {
                 let region =
                     self.infcx().next_region_var(infer::Autoref(self.span));
                 let (extra_derefs, auto) = match ty::get(self_mt.ty).sty {
-                    ty::ty_vec(_, None) => (0, ty::AutoBorrowVec(region, self_mt.mutbl)),
+                    ty::ty_vec(_, None) |
                     ty::ty_str => (0, ty::AutoBorrowVec(region, self_mt.mutbl)),
                     ty::ty_trait(..) => (0, ty::AutoBorrowObj(region, self_mt.mutbl)),
                     _ => (1, ty::AutoPtr(region, self_mt.mutbl, None)),
@@ -806,7 +806,8 @@ impl<'a> LookupContext<'a> {
     }
 
     // Takes an [T] - an unwrapped DST pointer (either ~ or &)
-    // [T] to &[T] or &&[T] (note that we started with a &[T] or ~[T] which has been implicitly derefed)
+    // [T] to &[T] or &&[T] (note that we started with a &[T] or ~[T] which has
+    // been implicitly derefed).
     fn auto_slice_vec(&self, ty: ty::t, autoderefs: uint) -> Option<MethodCallee> {
         let tcx = self.tcx();
         debug!("auto_slice_vec {}", ppaux::ty_to_str(tcx, ty));
@@ -823,8 +824,9 @@ impl<'a> LookupContext<'a> {
 
         // Then try to borrow to a slice *and* borrow a pointer.
         self.search_for_some_kind_of_autorefd_method(
-            AutoBorrowVecRef, autoderefs, [MutImmutable, MutMutable],
-            |m,r| {
+            |r, m| AutoPtr(r, ast::MutImmutable, Some( box AutoBorrowVec(r, m))),
+            autoderefs, [MutImmutable, MutMutable],
+            |m, r| {
                 let slice_ty = ty::mk_slice(tcx, r,
                                             ty::mt {ty:ty, mutbl:m});
                 // NB: we do not try to autoref to a mutable
@@ -839,7 +841,7 @@ impl<'a> LookupContext<'a> {
     // [T, ..len] -> [T] or &[T] or &&[T]
     fn auto_unsize_vec(&self, ty: ty::t, autoderefs: uint, len: uint) -> Option<MethodCallee> {
         let tcx = self.tcx();
-        debug!("auto_slice_vec {}", ppaux::ty_to_str(tcx, ty));
+        debug!("auto_unsize_vec {}", ppaux::ty_to_str(tcx, ty));
 
         // First try to borrow to a slice
         let entry = self.search_for_some_kind_of_autorefd_method(
@@ -884,8 +886,9 @@ impl<'a> LookupContext<'a> {
         }
 
         self.search_for_some_kind_of_autorefd_method(
-            AutoBorrowVecRef, autoderefs, [MutImmutable],
-            |m,r| {
+            |r, m| AutoPtr(r, ast::MutImmutable, Some( box AutoBorrowVec(r, m))),
+            autoderefs, [MutImmutable],
+            |m, r| {
                 let slice_ty = ty::mk_str_slice(tcx, r, m);
                 ty::mk_rptr(tcx, r, ty::mt {ty:slice_ty, mutbl:m})
             })

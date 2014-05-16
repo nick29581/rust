@@ -413,9 +413,10 @@ pub fn super_fold_autoref<T:TypeFolder>(this: &mut T,
 {
     match *autoref {
         ty::AutoPtr(r, m, None) => ty::AutoPtr(this.fold_region(r), m, None),
-        ty::AutoPtr(r, m, Some(ref a)) => ty::AutoPtr(this.fold_region(r), m, Some(box super_fold_autoref(this, a.clone()))),        
+        ty::AutoPtr(r, m, Some(ref a)) => {
+            ty::AutoPtr(this.fold_region(r), m, Some(box super_fold_autoref(this, a.clone())))
+        }
         ty::AutoBorrowVec(r, m) => ty::AutoBorrowVec(this.fold_region(r), m),
-        ty::AutoBorrowVecRef(r, m) => ty::AutoBorrowVecRef(this.fold_region(r), m),
         ty::AutoUnsafe(m) => ty::AutoUnsafe(m),
         ty::AutoBorrowObj(r, m) => ty::AutoBorrowObj(this.fold_region(r), m),
         ty::AutoUnsize(r, m, ref k) => ty::AutoUnsize(this.fold_region(r), m, k.clone()),

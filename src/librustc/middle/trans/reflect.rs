@@ -94,6 +94,7 @@ impl<'a, 'b> Reflector<'a, 'b> {
         let mth_ty =
             ty::mk_bare_fn(tcx,
                            self.visitor_methods[mth_idx].fty.clone());
+        debug!("Emit call visit method: visit_{}: {}", ty_name, ty_to_str(tcx, mth_ty));
         let v = self.visitor_val;
         debug!("passing {} args:", args.len());
         let mut bcx = self.bcx;
@@ -152,8 +153,8 @@ impl<'a, 'b> Reflector<'a, 'b> {
 
           // Should rename to vec_*.
           ty::ty_vec(ty, Some(sz)) => {
-              let extra = (vec!(self.c_uint(sz))).append(self.c_size_and_align(t).as_slice());
-              let extra = extra.append(vec!(self.c_tydesc(ty)).as_slice());
+              let mut extra = (vec!(self.c_uint(sz))).append(self.c_size_and_align(t).as_slice());
+              extra.push(self.c_tydesc(ty));
               self.visit("evec_fixed", extra.as_slice())
           }
           ty::ty_vec(..) | ty::ty_str | ty::ty_trait(..) => fail!("unexpected unsized type"),

@@ -572,7 +572,12 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                         match *opt_autoref {
                             None => { }
                             Some(ref r) => {
-                                self.walk_autoref(expr, r, n);
+                                let cmt_derefd = return_if_err!(
+                                    self.mc.cat_expr_autoderefd(expr, n));
+                                debug!("walk_adjustment: cmt_derefd={}",
+                                       cmt_derefd.repr(self.tcx()));
+
+                                self.walk_autoref(expr, r, n, cmt_derefd);
                             }
                         }
                     }
@@ -617,30 +622,29 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
     fn walk_autoref(&mut self,
                     expr: &ast::Expr,
                     autoref: &ty::AutoRef,
-                    autoderefs: uint) {
+                    autoderefs: uint,
+                    cmt_derefd: mc::cmt) {
         debug!("walk_autoref expr={} autoderefs={}", expr.repr(self.tcx()), autoderefs);
-
-        let cmt_derefd = return_if_err!(
-            self.mc.cat_expr_autoderefd(expr, autoderefs));
-
-        debug!("walk_autoref: cmt_derefd={}", cmt_derefd.repr(self.tcx()));
 
         match *autoref {
             ty::AutoPtr(r, m, ref a) => {
-                self.delegate.borrow(expr.id,
-                                     expr.span,
-                                     cmt_derefd,
-                                     r,
-                                     ty::BorrowKind::from_mutbl(m),
-                                     AutoRef);
                 match *a {
-                    // TODO is autoderefs correct?
-                    Some(box ref a) => self.walk_autoref(expr, a, 0),
-                    None => {}
+                    Some(box ref a) => {
+                        self.walk_autoref(expr, a, autoderefs, cmt_derefd)
+                    }
+                    None => {
+                        self.delegate.borrow(expr.id,
+                                             expr.span,
+                                             cmt_derefd.clone(),
+                                             r,
+                                             ty::BorrowKind::from_mutbl(m),
+                                             AutoRef);
+                    }
                 }
             }
-            ty::AutoBorrowVec(r, m) | ty::AutoBorrowVecRef(r, m) |
-            ty::AutoUnsize(r, m, _) | ty::AutoUnsizeRef(r, m, _) => {
+            ty::AutoBorrowVec(r, m) |
+            ty::AutoUnsize(r, m, _) |
+            ty::AutoUnsizeRef(r, m, _) => {
                 let cmt_index = self.mc.cat_index(expr, cmt_derefd, autoderefs+1);
                 self.delegate.borrow(expr.id,
                                      expr.span,

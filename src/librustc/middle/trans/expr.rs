@@ -189,48 +189,15 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                     bcx, deref_multiple(bcx, expr, datum, adj.autoderefs));
             }
 
-            datum = match adj.autoref {
-                None | Some(AutoBorrowVec(..)) => {
-                    datum
+            match adj.autoref {
+                Some(ref a) => {
+                    datum = unpack_datum!(bcx, apply_autoref(a,
+                                                             bcx,
+                                                             expr,
+                                                             datum));
                 }
-                Some(AutoUnsafe(..)) | // region + unsafe ptrs have same repr
-                Some(AutoPtr(..)) | Some(ty::AutoBorrowVecRef(..)) => {
-                    unpack_datum!(bcx, auto_ref(bcx, datum, expr))
-                }
-                Some(ty::AutoUnsize(_, _, ty::UnsizeLength(_))) |
-                Some(ty::AutoUnsizeRef(_, _, ty::UnsizeLength(_))) => {
-                    // TODO factor out into method
-
-                    // TODO need to check the AutoUnsizeKind, could use then len rather
-                    // than looking it up too
-                    let tcx = bcx.tcx();
-                    debug!("nrc autounsize {}", ::util::ppaux::ty_to_str(tcx, datum.ty));
-                    let unit_ty = ty::sequence_element_type(tcx, datum.ty);
-
-                    // TODO not really sure if this is doing the right thing
-                    let base = unpack_datum!(bcx,
-                                             datum.to_lvalue_datum(bcx, "unsize", expr.id));
-                    let (base, len) = base.get_vec_base_and_len(bcx);
-
-                    // this type may have a different region/mutability than the
-                    // real one, but it will have the same runtime representation
-                    let slice_ty = ty::mk_slice(tcx, ty::ReStatic,
-                                                ty::mt { ty: unit_ty, mutbl: ast::MutImmutable });
-
-                    let scratch = rvalue_scratch_datum(bcx, slice_ty, "__adjust");
-                    Store(bcx, base, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
-                    Store(bcx, len, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
-                    unpack_datum!(bcx, DatumBlock(bcx, scratch.to_expr_datum()))
-                }
-                Some(ty::AutoUnsizeUniq(ty::UnsizeLength(_))) => {
-                    fail!("TODO unique unsizing");
-                }
-                Some(AutoBorrowObj(..)) => {
-                    unpack_datum!(bcx, auto_borrow_obj(bcx, expr, datum))
-                }
-                // TODO make this more friendly
-                _ => fail!("Unsupported adjustment")
-            };
+                _ => {}
+            }
         }
         AutoObject(..) => {
             let adjusted_ty = ty::expr_ty_adjusted(bcx.tcx(), expr);
@@ -242,6 +209,130 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
     }
     debug!("after adjustments, datum={}", datum.to_str(bcx.ccx()));
     return DatumBlock {bcx: bcx, datum: datum};
+
+    fn apply_autoref<'a>(autoref: &ty::AutoRef,
+                         bcx: &'a Block<'a>,
+                         expr: &ast::Expr,
+                         datum: Datum<Expr>)
+                         -> DatumBlock<'a, Expr> {
+        let mut bcx = bcx;
+
+        let datum = match autoref {
+            &AutoBorrowVec(..) => {
+                // Theoretically nothing to do, but the old value is going to
+                // get deleted - I'm not really sure why, but I guess because
+                // there is cleanup scheduled somewhere. Would be nice if we
+                // could forget about that cleanup.
+                unpack_datum!(bcx, copy_fat_ptr(bcx, expr, datum))
+            }
+            &AutoUnsafe(..) |
+            &AutoPtr(_, _, None) => {
+                unpack_datum!(bcx, auto_ref(bcx, datum, expr))
+            }
+            &AutoPtr(_, _, Some(box ref a)) => {
+                let datum = unpack_datum!(bcx, apply_autoref(a, bcx, expr, datum));
+                unpack_datum!(bcx, auto_ref(bcx, datum, expr))
+            }
+            &ty::AutoUnsize(_, _, ty::UnsizeLength(len)) |
+            &ty::AutoUnsizeRef(_, _, ty::UnsizeLength(len)) => {
+                unpack_datum!(bcx, unsize_vec(bcx, expr, datum, len))
+            }
+            &ty::AutoUnsizeUniq(ty::UnsizeLength(len)) => {
+                let tcx = bcx.tcx();
+
+                let ll_len = C_uint(bcx.ccx(), len);
+                let unit_ty = ty::sequence_element_type(tcx, datum.ty);
+                let vec_ty = ty::mk_uniq(tcx, ty::mk_vec(tcx, unit_ty, None));
+                let scratch = rvalue_scratch_datum(bcx, vec_ty, "__adjust");
+
+                if len == 0 {
+                    Store(bcx,
+                          C_null(type_of::type_of(bcx.ccx(), unit_ty).ptr_to()),
+                          GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
+                } else {
+                    // Box<[(), ..n]> will not allocate, but ~[()] expects an
+                    // allocation of n bytes, so we must allocate here (yuck).
+                    let llty = type_of::type_of(bcx.ccx(), unit_ty);
+                    if llsize_of_alloc(bcx.ccx(), llty) == 0 {
+                        let ptr_unit_ty = type_of::type_of(bcx.ccx(), unit_ty).ptr_to();
+                        let align = C_uint(bcx.ccx(), 8);
+                        let alloc_result = malloc_raw_dyn(bcx, ptr_unit_ty, vec_ty, ll_len, align);
+                        bcx = alloc_result.bcx;
+                        Store(bcx,
+                              alloc_result.val,
+                              GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
+                    } else {
+                        let base = GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]);
+                        let base = PointerCast(bcx, base,
+                                               type_of::type_of(bcx.ccx(), datum.ty).ptr_to());
+                        bcx = datum.store_to(bcx, base);
+
+                    }
+                }
+
+                Store(bcx, ll_len, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
+                scratch.to_expr_datum()
+            }
+            &AutoBorrowObj(..) => {
+                unpack_datum!(bcx, auto_borrow_obj(bcx, expr, datum))
+            }
+            _ => bcx.tcx().sess.span_bug(expr.span, "unsupported adjustment")
+        };
+
+        DatumBlock(bcx, datum)
+    }
+
+    fn unsize_vec<'a>(bcx: &'a Block<'a>,
+                      expr: &ast::Expr,
+                      datum: Datum<Expr>,
+                      len: uint)
+                      -> DatumBlock<'a, Expr> {
+        let mut bcx = bcx;
+        let tcx = bcx.tcx();
+        let unit_ty = ty::sequence_element_type(tcx, datum.ty);
+
+        // Arrange cleanup
+        let base = unpack_datum!(bcx,
+                                 datum.to_lvalue_datum(bcx, "unsize", expr.id));
+        let base = base.get_vec_base(bcx);
+        let len = C_uint(bcx.ccx(), len);
+
+        // this type may have a different region/mutability than the
+        // real one, but it will have the same runtime representation
+        let slice_ty = ty::mk_slice(tcx, ty::ReStatic,
+                                    ty::mt { ty: unit_ty, mutbl: ast::MutImmutable });
+
+        let scratch = rvalue_scratch_datum(bcx, slice_ty, "__adjust");
+        Store(bcx, base, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
+        Store(bcx, len, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
+        DatumBlock(bcx, scratch.to_expr_datum())
+    }
+
+    fn copy_fat_ptr<'a>(bcx: &'a Block<'a>,
+                        expr: &ast::Expr,
+                        datum: Datum<Expr>)
+                        -> DatumBlock<'a, Expr> {
+        let mut bcx = bcx;
+        let tcx = bcx.tcx();
+
+        let unit_ty = ty::sequence_element_type(tcx, datum.ty);
+        let lval = unpack_datum!(bcx,
+                                 datum.to_lvalue_datum(bcx, "unsize", expr.id));
+
+        // this type may have a different region/mutability than the
+        // real one, but it will have the same runtime representation
+        let slice_ty = ty::mk_slice(tcx, ty::ReStatic,
+                                    ty::mt { ty: unit_ty, mutbl: ast::MutImmutable });
+
+        let scratch = rvalue_scratch_datum(bcx, slice_ty, "__adjust");
+        let base = Load(bcx, GEPi(bcx, lval.val, [0u, abi::slice_elt_base]));
+        Store(bcx, base, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
+
+        let len = Load(bcx, GEPi(bcx, lval.val, [0u, abi::slice_elt_len]));
+        Store(bcx, len, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
+
+        DatumBlock(bcx, scratch.to_expr_datum())
+    }
 
     fn add_env<'a>(bcx: &'a Block<'a>,
                    expr: &ast::Expr,

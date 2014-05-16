@@ -214,8 +214,7 @@ pub enum AutoAdjustment {
 
 #[deriving(Clone, Decodable, Encodable, Eq, Show)]
 pub enum UnsizeKind {
-    // [T, ..n] -> [T]
-    // The uint field is n
+    // [T, ..n] -> [T], the uint field is n.
     UnsizeLength(uint),
     // An unsize coercion applied to the tail field of a struct
     UnsizeStruct(Box<UnsizeKind>),
@@ -240,19 +239,15 @@ pub enum AutoRef {
     /// Fat pointer to fat pointer
     AutoBorrowVec(Region, ast::Mutability),
 
-    /// Fat pointer to thin pointer(fat pointer)
-    // TODO remove in favour of AutoPtr(AutoBorrowVec)
-    AutoBorrowVecRef(Region, ast::Mutability),
-
     /// Convert ~[T, ..n] or &[T, ..n] to &[T]
     /// Thin pointer to fat pointer
     AutoUnsize(Region, ast::Mutability, UnsizeKind),
 
     /// Convert ~[T, ..n] to ~[T]
     /// Thin pointer to fat pointer
-    /// One day, this should be replaced by AutoFields.
+    /// With DST and Box a library type, this should be replaced by AutoFields.
     AutoUnsizeUniq(UnsizeKind),
-    
+
     /// Convert [T, ..n] to &[T]
     /// Value to fat pointer
     AutoUnsizeRef(Region, ast::Mutability, UnsizeKind),
@@ -266,8 +261,7 @@ pub enum AutoRef {
     AutoBorrowObj(Region, ast::Mutability),
 
     // Coerce a struct by adjusting its fields
-    // TODO
-    //AutoFields(Vec<(field, ~AutoRef)>),
+    //AutoFields(Vec<(field, Box<AutoRef>)>),
 }
 
 /// A restriction that certain types must be the same size. The use of
@@ -1616,9 +1610,11 @@ pub fn sequence_element_type(cx: &ctxt, ty: t) -> t {
         ty_box(t) | ty_uniq(t) => match get(t).sty {
             ty_vec(ty, _) => ty,
             ty_str => mk_mach_uint(ast::TyU8),
-            _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}", ::util::ppaux::ty_to_str(cx, ty)).as_slice()),
+            _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}",
+                                     ty_to_str(cx, ty)).as_slice()),
         },
-        _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}", ::util::ppaux::ty_to_str(cx, ty)).as_slice()),
+        _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}",
+                                 ty_to_str(cx, ty)).as_slice()),
     }
 }
 
@@ -2929,18 +2925,6 @@ pub fn adjust_ty(cx: &ctxt,
                 borrow_vec(cx, span, r, m, ty)
             }
 
-            AutoBorrowVecRef(r, m) => {
-                let adjusted_ty = borrow_vec(cx,
-                                             span,
-                                             r,
-                                             m,
-                                             ty);
-                mk_rptr(cx, r, mt {
-                    ty: adjusted_ty,
-                    mutbl: ast::MutImmutable
-                })
-            }
-
             AutoUnsafe(m) => {
                 mk_ptr(cx, mt {ty: ty, mutbl: m})
             }
@@ -2949,10 +2933,11 @@ pub fn adjust_ty(cx: &ctxt,
                 borrow_obj(cx, span, r, m, ty)
             }
 
-            AutoUnsize(r, m, _) => unsize_vec(cx, span, r, m, ty),
+            AutoUnsize(r, m, _) => unsize_ref_vec(cx, span, r, m, ty),
             AutoUnsizeUniq(_) => unsize_uniq_vec(cx, span, ty),
             AutoUnsizeRef(r, m, UnsizeLength(_)) => {
-                ty::mk_rptr(cx, r, mt {ty: unsize_vec(cx, span, r, m, ty), mutbl: ast::MutImmutable})
+                ty::mk_rptr(cx, r, mt { ty: unsize_ref_vec(cx, span, r, m, ty),
+                                        mutbl: ast::MutImmutable })
             }
             AutoUnsizeRef(..) => cx.sess.span_bug(span, "Unsupported DST auto-borrow"),
         }
@@ -2971,7 +2956,8 @@ pub fn adjust_ty(cx: &ctxt,
                 _ => {
                     cx.sess.span_bug(
                         span,
-                        format!("borrow_vec associated with bad sty: {:?}", get(ty).sty).as_slice());
+                        format!("borrow_vec associated with bad sty: {:?}",
+                                get(ty).sty).as_slice());
                 }
             },
 
@@ -2983,52 +2969,43 @@ pub fn adjust_ty(cx: &ctxt,
         }
     }
 
-    // TODO merge with borrow_vec?
-    fn unsize_vec(cx: &ctxt,
+    // [T, ..n] => [T] or &[T, ..n] => &[T]
+    fn unsize_ref_vec(cx: &ctxt,
                   span: Span,
                   r: Region,
                   m: ast::Mutability,
                   ty: ty::t) -> ty::t {
         match get(ty).sty {
-            ty_uniq(t) | ty_rptr(_, mt{ty: t, ..}) => match get(t).sty {
-                ty::ty_vec(t, Some(_)) => ty::mk_slice(cx, r, ty::mt {ty: t, mutbl: m}),
-                _ => {
-                    cx.sess.span_bug(
-                        span,
-                        format!("unsize_vec associated with bad sty: {:?}", get(ty).sty).as_slice());
-                }
-            },
-
-            ty_vec(t, Some(_)) => ty::mk_vec(cx, t, None),
-
-            ref s => {
-                cx.sess.span_bug(
-                    span,
-                    format!("unsize_vec associated with bad sty: {:?}", s).as_slice());
-            }
+            ty_uniq(t) | ty_rptr(_, mt{ty: t, ..}) => ty::mk_rptr(cx, r,
+                                                                  mt { ty: unsize_vec(cx, span, t),
+                                                                       mutbl: m}),
+            ty_vec(_, Some(_)) => unsize_vec(cx, span, ty),
+            ref s => cx.sess.span_bug(span,
+                                      format!("unsize_ref_vec with bad sty: {:?}", s).as_slice())
         }
     }
 
-    // TODO merge with borrow_vec?
+    // ~[T, ..n] => ~[T]
     fn unsize_uniq_vec(cx: &ctxt,
                        span: Span,
                        ty: ty::t) -> ty::t {
         match get(ty).sty {
-            ty_uniq(t) => match get(t).sty {
-                ty::ty_vec(t, Some(_)) => ty::mk_uniq(cx, ty::mk_vec(cx, t, None)),
-                _ => {
-                    cx.sess.span_bug(
-                        span,
-                        format!("unsize_uniq_vec associated with bad sty: {:?}", get(ty).sty).as_slice());
-                }
-            },
-
-            ref s => {
-                cx.sess.span_bug(
-                    span,
-                    format!("unsize_uniq_vec associated with bad sty: {:?}", s).as_slice());
-            }
+            ty_uniq(t) => ty::mk_uniq(cx, unsize_vec(cx, span, t)),
+            ref s => cx.sess.span_bug(span,
+                                      format!("unsize_uniq_vec with bad sty: {:?}", s).as_slice())
         }
+    }
+
+    // [T, ..n] => [T]
+    fn unsize_vec(cx: &ctxt,
+                  span: Span,
+                  ty: ty::t) -> ty::t {
+        match get(ty).sty {
+            ty_vec(t, Some(_)) => ty::mk_vec(cx, t, None),
+            ref s => cx.sess.span_bug(span,
+                                      format!("unsize_vec with bad sty: {:?}", s).as_slice())
+        }
+
     }
 
     fn borrow_obj(cx: &ctxt, span: Span, r: Region,
@@ -3064,7 +3041,6 @@ impl AutoRef {
             ty::AutoPtr(r, m, None) => ty::AutoPtr(f(r), m, None),
             ty::AutoPtr(r, m, Some(ref a)) => ty::AutoPtr(f(r), m, Some(box a.map_region(f))),
             ty::AutoBorrowVec(r, m) => ty::AutoBorrowVec(f(r), m),
-            ty::AutoBorrowVecRef(r, m) => ty::AutoBorrowVecRef(f(r), m),
             ty::AutoUnsize(r, m, ref k) => ty::AutoUnsize(f(r), m, k.clone()),
             ty::AutoUnsizeUniq(ref k) => ty::AutoUnsizeUniq(k.clone()),
             ty::AutoUnsizeRef(r, m, ref k) => ty::AutoUnsizeRef(f(r), m, k.clone()),

@@ -67,7 +67,10 @@ pub fn make_drop_glue_unboxed<'a>(
             bcx
         };
 
-        glue::trans_exchange_free(bcx, dataptr, 0, 8)
+        let not_null = IsNotNull(bcx, dataptr);
+        with_cond(bcx, not_null, |bcx| {
+            glue::trans_exchange_free(bcx, dataptr, 0, 8)
+        })
     })
 }
 
@@ -438,9 +441,32 @@ pub fn get_fixed_base_and_len(bcx: &Block,
 
     let ccx = bcx.ccx();
 
-    let base = GEPi(bcx, llval, [0u, abi::slice_elt_base]);
+    let base = GEPi(bcx, llval, [0u, 0u]);
     let len = C_uint(ccx, vec_length);
     (base, len)
+}
+
+pub fn get_base(bcx: &Block,
+                llval: ValueRef,
+                vec_ty: ty::t)
+                -> ValueRef {
+    let ccx = bcx.ccx();
+
+    match ty::get(vec_ty).sty {
+        ty::ty_vec(_, Some(_)) => {
+            GEPi(bcx, llval, [0u, 0u])
+        }
+        ty::ty_uniq(ty) | ty::ty_rptr(_, ty::mt{ty, ..}) => match ty::get(ty).sty {
+            ty::ty_vec(_, None) | ty::ty_str => {
+                Load(bcx, GEPi(bcx, llval, [0u, abi::slice_elt_base]))
+            }
+            ty::ty_vec(_, Some(_)) => {
+                GEPi(bcx, Load(bcx, llval), [0u, 0u])
+            }
+            _ => ccx.sess().bug("unexpected type in get_base_and_len"),
+        },
+        _ => ccx.sess().bug("unexpected type in get_base_and_len"),
+    }
 }
 
 pub fn get_base_and_len(bcx: &Block,
@@ -469,8 +495,7 @@ pub fn get_base_and_len(bcx: &Block,
                 (base, len)
             }
             ty::ty_vec(_, Some(n)) => {
-                // TODO best way to deref a pointer?
-                let base = Load(bcx, GEPi(bcx, llval, [0u]));
+                let base = GEPi(bcx, Load(bcx, llval), [0u, 0u]);
                 (base, C_uint(ccx, n))
             }
             _ => ccx.sess().bug("unexpected type in get_base_and_len"),
