@@ -1515,7 +1515,7 @@ fn check_unnecessary_allocation(cx: &Context, e: &ast::Expr) {
             match *adjustment {
                 ty::AutoDerefRef(ty::AutoDerefRef { ref autoref, .. }) => {
                     match (allocation, autoref) {
-                        (VectorAllocation, &Some(ty::AutoBorrowVec(..))) => {
+                        (VectorAllocation, &Some(ty::AutoPtr(_, _, None))) => {
                             report("unnecessary allocation, the sigil can be \
                                     removed");
                         }

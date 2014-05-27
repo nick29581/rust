@@ -1118,8 +1118,7 @@ fn ty_generics(ccx: &CrateCtxt,
                 Ok(def_id) => { ty::try_add_builtin_trait(ccx.tcx,
                                                           def_id,
                                                           &mut param_bounds.builtin_bounds); },
-                // Fixme(13367) after `type` makes it into the snapshot, we can check this properly
-                Err(_s) => {}, //ccx.tcx.sess.err(s),
+                Err(s) => ccx.tcx.sess.err(s.as_slice()),
             }
         }
 

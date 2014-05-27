@@ -1330,7 +1330,7 @@ pub fn autoderef<T>(fcx: &FnCtxt, sp: Span, base_ty: ty::t,
         // Otherwise, deref if type is derefable:
         let mt = match ty::deref(resolved_t, false) {
             Some(mt) => Some(mt),
-            None => {
+            _ => {
                 let method_call =
                     expr_id.map(|id| MethodCall::autoderef(id, autoderefs as u32));
                 try_overloaded_deref(fcx, sp, method_call, None, resolved_t, lvalue_pref)
@@ -3083,8 +3083,8 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
                         fn is_vec(t: ty::t) -> bool {
                             match ty::get(t).sty {
                                 ty::ty_vec(..) => true,
-                                ty::ty_ptr(ty::mt{ty: t, ..}) | ty::ty_rptr(_, ty::mt{ty: t, ..}) |
-                                ty::ty_box(t) | ty::ty_uniq(t) => match ty::get(t).sty {
+                                ty::ty_ptr(ty::mt{ty, ..}) | ty::ty_rptr(_, ty::mt{ty, ..}) |
+                                ty::ty_box(ty) | ty::ty_uniq(ty) => match ty::get(ty).sty {
                                     ty::ty_vec(_, None) => true,
                                     _ => false,
                                 },

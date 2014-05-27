@@ -143,11 +143,12 @@ fn const_deref(cx: &CrateContext, v: ValueRef, t: ty::t, explicit: bool)
             assert!(mt.mutbl != ast::MutMutable);
             let dv = match ty::get(t).sty {
                 ty::ty_ptr(mt) | ty::ty_rptr(_, mt) => {
-                    match ty::get(mt.ty).sty {
-                        ty::ty_vec(_, None) | ty::ty_str | ty::ty_trait(..) => {
-                            cx.sess().bug("unexpected unsized type")
-                        }
-                        _ => const_deref_ptr(cx, v),
+                    if ty::type_is_sized(cx.tcx(), mt.ty) {
+                        const_deref_ptr(cx, v)
+                    } else {
+                        // TODO broken
+                        let e1 = const_get_elt(cx, v, [0]);
+                        const_deref_ptr(cx, e1)
                     }
                 }
                 ty::ty_enum(..) | ty::ty_struct(..) => {
@@ -221,51 +222,37 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                 }
                 ty::AutoDerefRef(ref adj) => {
                     let mut ty = ety;
-                    let mut maybe_ptr = None;
-                    for _ in range(0, adj.autoderefs) {
+                    // Save the last autoderef in case we can avoid it.
+                    for _ in range(0, adj.autoderefs-1) {
                         let (dv, dt) = const_deref(cx, llconst, ty, false);
-                        maybe_ptr = Some(llconst);
                         llconst = dv;
                         ty = dt;
                     }
 
                     match adj.autoref {
-                        None => { }
+                        None => {
+                            let (dv, _) = const_deref(cx, llconst, ty, false);
+                            llconst = dv;
+                        }
                         Some(ref autoref) => {
-                            // Don't copy data to do a deref+ref.
-                            let llptr = match maybe_ptr {
-                                Some(ptr) => ptr,
-                                None => {
-                                    inlineable = false;
-                                    const_addr_of(cx, llconst)
-                                }
-                            };
                             match *autoref {
                                 ty::AutoUnsafe(m) |
                                 ty::AutoPtr(ty::ReStatic, m, None) => {
                                     assert!(m != ast::MutMutable);
-                                    llconst = llptr;
-                                }
-                                ty::AutoBorrowVec(ty::ReStatic, m) => {
-                                    assert!(m != ast::MutMutable);
-                                    assert_eq!(abi::slice_elt_base, 0);
-                                    assert_eq!(abi::slice_elt_len, 1);
-                                    match ty::get(ty).sty {
-                                        ty::ty_vec(_, Some(len)) => {
-                                            llconst = C_struct(cx, [
-                                                llptr,
-                                                C_uint(cx, len)
-                                            ], false);
-                                        }
-                                        _ => {}
+
+                                    // Don't copy data to do a deref+ref
+                                    // (i.e., skip the last auto-deref).
+                                    if adj.autoderefs == 0 {
+                                        inlineable = false;
+                                        llconst = const_addr_of(cx, llconst);
                                     }
                                 }
-                                ty::AutoUnsize(..) => {
-                                    cx.sess()
-                                      .span_unimpl(e.span,
-                                                   "unimplemented const coercion to unsized type");
-                                }
-                                ty::AutoUnsizeRef(..) => {
+                                ty::AutoPtr(ty::ReStatic, m, Some(box ty::AutoUnsize(..))) => {
+                                    // If there were autoderefs, we would have to do
+                                    // the last one here, but that should not happen.
+                                    assert!(adj.autoderefs == 0);
+                                    assert!(m != ast::MutMutable);
+
                                     match ty::get(ety).sty {
                                         ty::ty_vec(_, Some(len)) => {
                                             inlineable = false;
@@ -525,7 +512,7 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                 let repr = adt::represent_type(cx, basety);
                 let discr = adt::const_get_discrim(cx, &*repr, v);
                 let iv = C_integral(cx.int_type, discr, false);
-                let ety_cast = expr::cast_type_kind(ety);
+                let ety_cast = expr::cast_type_kind(cx.tcx(), ety);
                 match ety_cast {
                     expr::cast_integral => {
                         let s = ty::type_is_signed(ety) as Bool;
@@ -594,6 +581,7 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                                                is_local);
             (v, inlineable)
           }
+          // TODO do we even need ast::ExprVstore ?
           ast::ExprVstore(ref sub, store @ ast::ExprVstoreSlice) |
           ast::ExprVstore(ref sub, store @ ast::ExprVstoreMutSlice) => {
             match sub.node {
@@ -608,7 +596,9 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                                                   e,
                                                   es.as_slice(),
                                                   is_local);
-                let llty = val_ty(cv);
+                (const_addr_of(cx, cv), false)
+                // TODO really? We can lose all of this?
+                /*let llty = val_ty(cv);
                 let gv = "const".with_c_str(|name| {
                     llvm::LLVMAddGlobal(cx.llmod, llty.to_ref(), name)
                 });
@@ -617,7 +607,7 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                       if store == ast::ExprVstoreMutSlice { False } else { True });
                 SetLinkage(gv, PrivateLinkage);
                 let p = const_ptrcast(cx, gv, llunitty);
-                (C_struct(cx, [p, C_uint(cx, es.len())], false), false)
+                (C_struct(cx, [p, C_uint(cx, es.len())], false), false)*/
               }
               _ => cx.sess().span_bug(e.span, "bad const-slice expr")
             }

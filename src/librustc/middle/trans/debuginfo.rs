@@ -2810,15 +2810,10 @@ fn type_metadata(cx: &CrateContext,
         ty::ty_uniq(typ) => {
             match ty::get(typ).sty {
                 ty::ty_vec(typ, None) => {
-                    let vec_metadata =
-                        vec_slice_metadata(cx, t, typ, unique_type_id, usage_site_span);
-                    pointer_type_metadata(cx, t, vec_metadata)
+                    vec_slice_metadata(cx, t, typ, unique_type_id, usage_site_span)
                 }
                 ty::ty_str => {
-                    let i8_t = ty::mk_i8();
-                    let vec_metadata =
-                        vec_slice_metadata(cx, t, i8_t, unique_type_id, usage_site_span);
-                    pointer_type_metadata(cx, t, vec_metadata)
+                    vec_slice_metadata(cx, t, ty::mk_i8(), unique_type_id, usage_site_span)
                 }
                 ty::ty_trait(box ty::TyTrait {
                         def_id,
@@ -2838,6 +2833,9 @@ fn type_metadata(cx: &CrateContext,
                 }
             }
         }
+        // FIXME Can we do better than this for unsized vec/str fields?
+        ty::ty_vec(typ, None) => fixed_vec_metadata(cx, typ, 1, usage_site_span),
+        ty::ty_str => fixed_vec_metadata(cx, ty::mk_i8(), 1, usage_site_span),
         ty::ty_ptr(ref mt) | ty::ty_rptr(_, ref mt) => {
             match ty::get(mt.ty).sty {
                 ty::ty_vec(typ, None) => {
@@ -2846,6 +2844,7 @@ fn type_metadata(cx: &CrateContext,
                 ty::ty_str => {
                     vec_slice_metadata(cx, t, ty::mk_i8(), unique_type_id, usage_site_span)
                 }
+                // TODO we could merge uniq and rptr except for ty_trait
                 ty::ty_trait(box ty::TyTrait {
                         def_id,
                         ref substs,
@@ -2858,9 +2857,10 @@ fn type_metadata(cx: &CrateContext,
                     false)
                 }
                 _ => {
-                    let pointee = type_metadata(cx, mt.ty, usage_site_span);
+                    let pointee_metadata = type_metadata(cx, pointee_type, usage_site_span);
                     return_if_created_in_meantime!();
-                    MetadataCreationResult::new(pointer_type_metadata(cx, t, pointee), false)
+                    MetadataCreationResult::new(pointer_type_metadata(cx, t, pointee_metadata),
+                                                false)
                 }
             }
         }

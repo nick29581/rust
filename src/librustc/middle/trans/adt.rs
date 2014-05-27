@@ -212,7 +212,7 @@ fn represent_type_uncached(cx: &CrateContext, t: ty::t) -> Repr {
                 let mut discr = 0;
                 while discr < 2 {
                     if cases.get(1 - discr).is_zerolen(cx) {
-                        match cases.get(discr).find_ptr() {
+                        match cases.get(discr).find_ptr(cx.tcx()) {
                             Some(ptrfield) => {
                                 let st = mk_struct(cx, cases.get(discr).tys.as_slice(),
                                                    false);
@@ -249,7 +249,8 @@ fn represent_type_uncached(cx: &CrateContext, t: ty::t) -> Repr {
                 mk_struct(cx, discr.append(c.tys.as_slice()).as_slice(), false)
             }).collect())
         }
-        _ => cx.sess().bug("adt::represent_type called on non-ADT type")
+        _ => cx.sess().bug(format!("adt::represent_type called on non-ADT type: {}",
+                           ty_to_str(cx.tcx(), t)).as_slice())
     }
 }
 
@@ -289,13 +290,10 @@ impl Case {
     fn is_zerolen(&self, cx: &CrateContext) -> bool {
         mk_struct(cx, self.tys.as_slice(), false).size == 0
     }
-    fn find_ptr(&self) -> Option<uint> {
+    fn find_ptr(&self, tcx: &ty::ctxt) -> Option<uint> {
         self.tys.iter().position(|&ty| {
             match ty::get(ty).sty {
-                ty::ty_uniq(ty) | ty::ty_rptr(_, ty::mt{ty, ..}) => match ty::get(ty).sty {
-                    ty::ty_vec(_, None) | ty::ty_str| ty::ty_trait(..) => false,
-                    _ => true,
-                },
+                ty::ty_uniq(ty) | ty::ty_rptr(_, ty::mt{ty, ..}) => ty::type_is_sized(tcx, ty),
                 ty::ty_box(..) | ty::ty_bare_fn(..) => true,
                 // Is that everything? Would closures qualify?
                 _ => false
