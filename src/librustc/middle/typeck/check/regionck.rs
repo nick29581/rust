@@ -909,7 +909,7 @@ fn constrain_autoderefs(rcx: &mut Rcx,
             _ => {}
         }
 
-        match ty::deref(derefd_ty, true) {
+        match ty::deref(rcx.fcx.tcx(), derefd_ty, true) {
             Some(mt) => derefd_ty = mt.ty,
             /* if this type can't be dereferenced, then there's already an error
                in the session saying so. Just bail out for now */
@@ -1142,9 +1142,9 @@ fn link_autoref(rcx: &Rcx,
         ty::AutoBorrowVec(r, m) |
         ty::AutoUnsizeRef(r, m, _) |
         ty::AutoUnsize(r, m, _) => {
-            let cmt_index = mc.cat_index(expr, expr_cmt, autoderefs+1);
+            //let cmt_index = mc.cat_index(expr, expr_cmt, autoderefs);
             link_region(rcx, expr.span, r,
-                        ty::BorrowKind::from_mutbl(m), cmt_index);
+                        ty::BorrowKind::from_mutbl(m), expr_cmt);
         }
 
         ty::AutoBorrowObj(r, m) => {

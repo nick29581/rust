@@ -119,11 +119,10 @@ pub fn sizing_type_of(cx: &CrateContext, t: ty::t) -> Type {
         ty::ty_box(..) |
         ty::ty_ptr(..) => Type::i8p(cx),
         ty::ty_uniq(ty) | ty::ty_rptr(_, ty::mt{ty, ..}) => {
-            match ty::get(ty).sty {
-                ty::ty_vec(_, None) | ty::ty_str => {
-                    Type::struct_(cx, [Type::i8p(cx), Type::i8p(cx)], false)
-                }
-                _ => Type::i8p(cx),
+            if !ty::type_is_sized(cx.tcx(), ty) {
+                Type::struct_(cx, [Type::i8p(cx), Type::i8p(cx)], false)
+            } else {
+                Type::i8p(cx)
             }
         }
 
@@ -151,8 +150,12 @@ pub fn sizing_type_of(cx: &CrateContext, t: ty::t) -> Type {
             }
         }
 
-        ty::ty_self(_) | ty::ty_infer(..) | ty::ty_param(..) |
-        ty::ty_err(..) | ty::ty_vec(_, None) | ty::ty_str => {
+        ty::ty_vec(_, None) | ty::ty_str => {
+            cx.sess().bug(format!("unsized type {:?} in sizing_type_of()",
+                                  ty::get(t).sty).as_slice())
+        }
+        ty::ty_self(_) | ty::ty_infer(..) |
+        ty::ty_param(..) | ty::ty_err(..) => {
             cx.sess().bug(format!("fictitious type {:?} in sizing_type_of()",
                                   ty::get(t).sty).as_slice())
         }

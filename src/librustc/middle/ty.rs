@@ -1704,12 +1704,9 @@ pub fn type_is_unique(ty: t) -> bool {
     }
 }
 
-pub fn type_is_fat_ptr(ty: t) -> bool {
+pub fn type_is_fat_ptr(cx: &ctxt, ty: t) -> bool {
     match get(ty).sty {
-        ty_rptr(_, mt{ty, ..}) | ty_uniq(ty) => match get(ty).sty {
-            ty_vec(_, None) | ty_str => true,
-            _ => false
-        },
+        ty_rptr(_, mt{ty, ..}) | ty_uniq(ty) if !type_is_sized(cx, ty) => true,
         _ => false,
     }
 }
@@ -2091,7 +2088,7 @@ pub fn type_contents(cx: &ctxt, ty: t) -> TypeContents {
         let result = match get(ty).sty {
             // Scalar and unique types are sendable, and durable
             ty_nil | ty_bot | ty_bool | ty_int(_) | ty_uint(_) | ty_float(_) |
-            ty_bare_fn(_) | ty::ty_char | ty_str => {
+            ty_bare_fn(_) | ty::ty_char => {
                 TC::None
             }
 
@@ -2125,9 +2122,14 @@ pub fn type_contents(cx: &ctxt, ty: t) -> TypeContents {
                 }
             }
 
-            ty_vec(t, _) => {
+            ty_vec(t, Some(_)) => {
                 tc_ty(cx, t, cache)
             }
+
+            ty_vec(t, None) => {
+                tc_ty(cx, t, cache) | TC::Nonsized
+            }
+            ty_str => TC::Nonsized,
 
             ty_struct(did, ref substs) => {
                 let flds = struct_fields(cx, did, substs);
@@ -2592,7 +2594,20 @@ pub fn type_is_machine(ty: t) -> bool {
 
 // Is the type's representation size known at compile time?
 pub fn type_is_sized(cx: &ctxt, ty: ty::t) -> bool {
-    type_contents(cx, ty).is_sized(cx)
+    let result = type_contents(cx, ty).is_sized(cx);
+
+    // TODO remove this
+    match get(ty).sty {
+        ty_char | ty_bool => assert!(result),
+        ty_str | ty_vec(_, None) => assert!(!result),
+        _ => {}
+    }
+
+    if !result {
+        //println!("unsized type: {}", ty_to_str(cx, ty));
+    }
+
+    result
 }
 
 // Whether a type is enum like, that is an enum type with only nullary
@@ -2616,22 +2631,21 @@ pub fn type_is_c_like_enum(cx: &ctxt, ty: t) -> bool {
 // The parameter `explicit` indicates if this is an *explicit* dereference.
 // Some types---notably unsafe ptrs---can only be dereferenced explicitly.
 //
-// (nrc) For now we only deref thin pointers, not DST fat pointers.
-pub fn deref(t: t, explicit: bool) -> Option<mt> {
+// TODO remove cx
+pub fn deref(_cx: &ctxt, t: t, explicit: bool) -> Option<mt> {
     match get(t).sty {
-        ty_box(typ) | ty_uniq(typ) => match get(typ).sty {
-            // Don't deref ~[] etc., might need to generalise this to all DST.
-            ty_vec(_, None) | ty_str => None,
-            _ => Some(mt {
-                ty: typ,
+        ty_box(ty) | ty_uniq(ty) => {
+            // TODO
+            /*match get(ty).sty {
+                ty_str | ty_vec(_, None) => return None,
+                _ => {}
+            }*/
+            Some(mt {
+                ty: ty,
                 mutbl: ast::MutImmutable,
-            }),
+            })
         },
-        ty_rptr(_, mt) => match get(mt.ty).sty {
-            // Don't deref &[], might need to generalise this to all DST.
-            ty_vec(_, None) | ty_str => None,
-            _ => Some(mt),
-        },
+        ty_rptr(_, mt) => Some(mt),
         ty_ptr(mt) if explicit => Some(mt),
         _ => None
     }
@@ -2641,6 +2655,8 @@ pub fn deref(t: t, explicit: bool) -> Option<mt> {
 pub fn index(ty: t) -> Option<t> {
     match get(ty).sty {
         ty_vec(t, _) => Some(t),
+        ty_str => Some(mk_u8()),
+        // TODO do we even hit these paths now?
         ty_ptr(mt_inner) | ty_rptr(_, mt_inner) => match get(mt_inner.ty).sty {
             ty_vec(t, _) => Some(t),
             ty_str => Some(mk_u8()),
@@ -2892,7 +2908,7 @@ pub fn adjust_ty(cx: &ctxt,
                                 }
                                 None => {}
                             }
-                            match deref(adjusted_ty, true) {
+                            match deref(cx, adjusted_ty, true) {
                                 Some(mt) => { adjusted_ty = mt.ty; }
                                 None => {
                                     cx.sess.span_bug(
@@ -2965,17 +2981,17 @@ pub fn adjust_ty(cx: &ctxt,
                   m: ast::Mutability,
                   ty: ty::t) -> ty::t {
         match get(ty).sty {
-            ty_uniq(t) | ty_ptr(mt{ty: t, ..}) |
-            ty_rptr(_, mt{ty: t, ..}) => match get(t).sty {
+            //ty_uniq(t) | ty_ptr(mt{ty: t, ..}) |
+            //ty_rptr(_, mt{ty: t, ..}) => match get(t).sty {
                 ty::ty_vec(t, None) => ty::mk_slice(cx, r, ty::mt {ty: t, mutbl: m}),
                 ty::ty_str => ty::mk_str_slice(cx, r, m),
-                _ => {
+                /*_ => {
                     cx.sess.span_bug(
                         span,
-                        format!("borrow_vec associated with bad sty: {:?}",
+                        format!("borrow_vec associated with bad sty: {}",
                                 get(ty).sty).as_slice());
-                }
-            },
+                }*/
+            //},
 
             ref s => {
                 cx.sess.span_bug(
@@ -2987,15 +3003,14 @@ pub fn adjust_ty(cx: &ctxt,
 
     // [T, ..n] => [T] or &[T, ..n] => &[T]
     fn unsize_ref_vec(cx: &ctxt,
-                  span: Span,
-                  r: Region,
-                  m: ast::Mutability,
-                  ty: ty::t) -> ty::t {
+                      span: Span,
+                      r: Region,
+                      m: ast::Mutability,
+                      ty: ty::t) -> ty::t {
         match get(ty).sty {
-            ty_uniq(t) | ty_rptr(_, mt{ty: t, ..}) => ty::mk_rptr(cx, r,
-                                                                  mt { ty: unsize_vec(cx, span, t),
-                                                                       mutbl: m}),
-            ty_vec(_, Some(_)) => unsize_vec(cx, span, ty),
+            ty_vec(_, Some(_)) => ty::mk_rptr(cx, r,
+                                              mt { ty: unsize_vec(cx, span, ty),
+                                                   mutbl: m}),
             ref s => cx.sess.span_bug(span,
                                       format!("unsize_ref_vec with bad sty: {:?}", s).as_slice())
         }
@@ -3006,7 +3021,7 @@ pub fn adjust_ty(cx: &ctxt,
                        span: Span,
                        ty: ty::t) -> ty::t {
         match get(ty).sty {
-            ty_uniq(t) => ty::mk_uniq(cx, unsize_vec(cx, span, t)),
+            ty_vec(_, Some(_)) => ty::mk_uniq(cx, unsize_vec(cx, span, ty)),
             ref s => cx.sess.span_bug(span,
                                       format!("unsize_uniq_vec with bad sty: {:?}", s).as_slice())
         }

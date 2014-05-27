@@ -343,23 +343,14 @@ impl<'a> LookupContext<'a> {
         let span = self.self_expr.map_or(self.span, |e| e.span);
         let self_expr_id = self.self_expr.map(|e| e.id);
 
-        let (self_ty, autoderefs, result) =
+        let (_, _, result) =
             check::autoderef(
                 self.fcx, span, self_ty, self_expr_id, PreferMutLvalue,
                 |self_ty, autoderefs| self.search_step(self_ty, autoderefs));
 
         match result {
             Some(Some(result)) => Some(result),
-            _ => {
-                if self.is_overloaded_deref() {
-                    // If we are searching for an overloaded deref, no
-                    // need to try coercing a `~[T]` to an `&[T]` and
-                    // searching for an overloaded deref on *that*.
-                    None
-                } else {
-                    self.search_for_autosliced_method(self_ty, autoderefs)
-                }
-            }
+            _ => None
         }
     }
 
@@ -392,6 +383,16 @@ impl<'a> LookupContext<'a> {
                     Some(result) => return Some(Some(result)),
                     None => {}
                 }
+            }
+        }
+
+        // If we are searching for an overloaded deref, no
+        // need to try coercing a `~[T]` to an `&[T]` and
+        // searching for an overloaded deref on *that*.
+        if !self.is_overloaded_deref() {
+            match self.search_for_autosliced_method(self_ty, autoderefs) {
+                Some(result) => return Some(Some(result)),
+                None => {}
             }
         }
 
@@ -722,17 +723,16 @@ impl<'a> LookupContext<'a> {
                                     self_ty: ty::t,
                                     autoderefs: uint)
                                     -> Option<MethodCallee> {
-        let (self_ty, auto_deref_ref) =
-            self.consider_reborrow(self_ty, autoderefs);
-
         // Hacky. For overloaded derefs, there may be an adjustment
         // added to the expression from the outside context, so we do not store
         // an explicit adjustment, but rather we hardwire the single deref
         // that occurs in trans and mem_categorization.
-        let adjustment = match self.self_expr {
-            Some(expr) => Some((expr.id, ty::AutoDerefRef(auto_deref_ref))),
-            None => return None
-        };
+        if self.self_expr.is_none() {
+            return None;
+        }
+
+        let (self_ty, auto_deref_ref) = self.consider_reborrow(self_ty, autoderefs);
+        let adjustment = Some((self.self_expr.unwrap().id, ty::AutoDerefRef(auto_deref_ref)));
 
         match self.search_for_method(self_ty) {
             None => None,
@@ -782,9 +782,10 @@ impl<'a> LookupContext<'a> {
             ty::ty_rptr(_, self_mt) => {
                 let region =
                     self.infcx().next_region_var(infer::Autoref(self.span));
+                // TODO remove extra_derefs
                 let (extra_derefs, auto) = match ty::get(self_mt.ty).sty {
                     ty::ty_vec(_, None) |
-                    ty::ty_str => (0, ty::AutoBorrowVec(region, self_mt.mutbl)),
+                    ty::ty_str => (1, ty::AutoBorrowVec(region, self_mt.mutbl)),
                     _ => (1, ty::AutoPtr(region, self_mt.mutbl, None)),
                 };
                 (ty::mk_rptr(tcx, region, self_mt),
@@ -926,19 +927,10 @@ impl<'a> LookupContext<'a> {
 
         let sty = ty::get(self_ty).sty.clone();
         match sty {
-            ty_rptr(_, mt) => match ty::get(mt.ty).sty {
-                ty_vec(ty, None) => self.auto_slice_vec(ty, autoderefs),
-                ty_vec(ty, Some(len)) => self.auto_unsize_vec(ty, autoderefs, len),
-                _ => None
-            },
-            ty_uniq(t) => match ty::get(t).sty {
-                ty_vec(ty, None) => self.auto_slice_vec(ty, autoderefs),
-                ty_vec(ty, Some(len)) => self.auto_unsize_vec(ty, autoderefs, len),
-                ty_str => self.auto_slice_str(autoderefs),
-                _ => None
-            },
-
             ty_vec(ty, Some(len)) => self.auto_unsize_vec(ty, autoderefs, len),
+            // TODO why do we need these? - Because they are fat pointer deref/ref not thin pointer
+            ty_vec(ty, None) => self.auto_slice_vec(ty, autoderefs),
+            ty_str => self.auto_slice_str(autoderefs),
 
             ty_trait(box ty::TyTrait {
                     def_id: trt_did,
@@ -976,13 +968,17 @@ impl<'a> LookupContext<'a> {
 
         let tcx = self.tcx();
         match ty::get(self_ty).sty {
+            // TODO replace with unsized
+            // Fat pointers need special treatment.
+            ty_str | ty_vec(_, None) => None,
+
             ty_bare_fn(..) | ty_box(..) | ty_uniq(..) | ty_rptr(..) |
             ty_infer(IntVar(_)) |
             ty_infer(FloatVar(_)) |
             ty_self(_) | ty_param(..) | ty_nil | ty_bot | ty_bool |
             ty_char | ty_int(..) | ty_uint(..) |
             ty_float(..) | ty_enum(..) | ty_ptr(..) | ty_struct(..) | ty_tup(..) |
-            ty_str | ty_vec(..) | ty_trait(..) | ty_closure(..) => {
+            ty_vec(..) | ty_trait(..) | ty_closure(..) => {
                 self.search_for_some_kind_of_autorefd_method(
                     |r, m| AutoPtr(r, m, None), autoderefs, [MutImmutable, MutMutable],
                     |m,r| ty::mk_rptr(tcx, r, ty::mt {ty:self_ty, mutbl:m}))
@@ -1399,6 +1395,7 @@ impl<'a> LookupContext<'a> {
                 match ty::get(rcvr_ty).sty {
                     ty::ty_rptr(_, mt) => {
                         match ty::get(mt.ty).sty {
+                            //TODO should be unsized
                             ty::ty_vec(_, None) | ty::ty_str => false,
                             _ => mutability_matches(mt.mutbl, m) &&
                                  rcvr_matches_ty(self.fcx, mt.ty, candidate),

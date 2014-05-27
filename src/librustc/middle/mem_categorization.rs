@@ -224,7 +224,7 @@ pub fn deref_kind(tcx: &ty::ctxt, t: ty::t) -> deref_kind {
       Some(k) => k,
       None => {
         tcx.sess.bug(
-            format!("deref_cat() invoked on non-derefable type {}",
+            format!("deref_kind() invoked on non-derefable type {}",
                     ty_to_str(tcx, t)).as_slice());
       }
     }
@@ -723,7 +723,7 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
             }
             None => base_cmt
         };
-        match ty::deref(base_cmt.ty, true) {
+        match ty::deref(self.tcx(), base_cmt.ty, true) {
             Some(mt) => self.cat_deref_common(node, base_cmt, deref_cnt, mt.ty),
             None => {
                 self.tcx().sess.span_bug(

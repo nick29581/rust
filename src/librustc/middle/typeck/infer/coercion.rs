@@ -279,7 +279,7 @@ impl<'f> Coerce<'f> {
         match ty::get(inner_ty).sty {
             ty::ty_str | ty::ty_vec(_, None) =>
                 Ok(Some(AutoDerefRef(AutoDerefRef {
-                        autoderefs: 0,
+                        autoderefs: 1,
                         autoref: Some(AutoBorrowVec(r_borrow, mutbl_b))
                     }))),
             _ => Ok(Some(AutoDerefRef(AutoDerefRef {
@@ -351,7 +351,7 @@ impl<'f> Coerce<'f> {
                                                  ty::mt{ty: ty, mutbl: mt_b.mutbl});
                             if_ok!(self.get_ref().infcx.try(|| sub.tys(ty, b)));
                             Ok(Some(AutoDerefRef(AutoDerefRef {
-                                autoderefs: 0,
+                                autoderefs: 1,
                                 autoref: Some(ty::AutoUnsize(r_borrow, mt_b.mutbl, kind))
                             })))
                         }
@@ -366,7 +366,7 @@ impl<'f> Coerce<'f> {
                             let ty = ty::mk_uniq(self.get_ref().infcx.tcx, ty);
                             if_ok!(self.get_ref().infcx.try(|| sub.tys(ty, b)));
                             Ok(Some(AutoDerefRef(AutoDerefRef {
-                                autoderefs: 0,
+                                autoderefs: 1,
                                 autoref: Some(ty::AutoUnsizeUniq(kind))
                             })))
                         }

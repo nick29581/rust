@@ -617,7 +617,7 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
     fn walk_autoref(&mut self,
                     expr: &ast::Expr,
                     autoref: &ty::AutoRef,
-                    autoderefs: uint,
+                    autoderefs: uint,  // TODO can remove this now
                     cmt_derefd: mc::cmt) {
         debug!("walk_autoref expr={} autoderefs={}", expr.repr(self.tcx()), autoderefs);
 
@@ -630,7 +630,7 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                     None => {
                         self.delegate.borrow(expr.id,
                                              expr.span,
-                                             cmt_derefd.clone(),
+                                             cmt_derefd,
                                              r,
                                              ty::BorrowKind::from_mutbl(m),
                                              AutoRef);
@@ -640,10 +640,10 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
             ty::AutoBorrowVec(r, m) |
             ty::AutoUnsize(r, m, _) |
             ty::AutoUnsizeRef(r, m, _) => {
-                let cmt_index = self.mc.cat_index(expr, cmt_derefd, autoderefs+1);
+                //let cmt_index = self.mc.cat_index(expr, cmt_derefd, autoderefs+1);
                 self.delegate.borrow(expr.id,
                                      expr.span,
-                                     cmt_index,
+                                     cmt_derefd,
                                      r,
                                      ty::BorrowKind::from_mutbl(m),
                                      AutoRef)

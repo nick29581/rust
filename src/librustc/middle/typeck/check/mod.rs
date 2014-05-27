@@ -1340,9 +1340,9 @@ pub fn autoderef<T>(fcx: &FnCtxt, sp: Span, base_ty: ty::t,
         }
 
         // Otherwise, deref if type is derefable:
-        let mt = match ty::deref(resolved_t, false) {
+        let mt = match ty::deref(fcx.tcx(), resolved_t, false) {
             Some(mt) => Some(mt),
-            None => {
+            _ => {
                 let method_call =
                     expr_id.map(|id| MethodCall::autoderef(id, autoderefs as u32));
                 try_overloaded_deref(fcx, sp, method_call, None, resolved_t, lvalue_pref)
@@ -1402,7 +1402,7 @@ fn try_overloaded_deref(fcx: &FnCtxt,
                 }
                 None => {}
             }
-            ty::deref(ref_ty, true)
+            ty::deref(fcx.tcx(), ref_ty, true)
         }
         None => None
     }
@@ -2853,7 +2853,7 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
                 }
                 ast::UnDeref => {
                     oprnd_t = structurally_resolved_type(fcx, expr.span, oprnd_t);
-                    oprnd_t = match ty::deref(oprnd_t, true) {
+                    oprnd_t = match ty::deref(tcx, oprnd_t, true) {
                         Some(mt) => mt.ty,
                         None => match try_overloaded_deref(fcx, expr.span,
                                                            Some(MethodCall::expr(expr.id)),

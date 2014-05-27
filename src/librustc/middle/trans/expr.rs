@@ -179,9 +179,9 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
             datum = unpack_datum!(bcx, add_env(bcx, expr, datum));
         }
         AutoDerefRef(ref adj) => {
-            if adj.autoderefs > 0 {
+            if adj.autoderefs > 1 {
                 datum = unpack_datum!(
-                    bcx, deref_multiple(bcx, expr, datum, adj.autoderefs));
+                    bcx, deref_multiple(bcx, expr, datum, adj.autoderefs-1));
             }
 
             match adj.autoref {
@@ -189,9 +189,14 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                     datum = unpack_datum!(bcx, apply_autoref(a,
                                                              bcx,
                                                              expr,
-                                                             datum));
+                                                             datum,
+                                                             adj.autoderefs));
                 }
-                _ => {}
+                _ => {
+                    if adj.autoderefs > 0 {
+                        datum = unpack_datum!(bcx, deref_once(bcx, expr, datum, adj.autoderefs));
+                    }
+                }
             }
         }
         AutoObject(..) => {
@@ -208,9 +213,11 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
     fn apply_autoref<'a>(autoref: &ty::AutoRef,
                          bcx: &'a Block<'a>,
                          expr: &ast::Expr,
-                         datum: Datum<Expr>)
+                         datum: Datum<Expr>,
+                         derefs: uint)
                          -> DatumBlock<'a, Expr> {
         let mut bcx = bcx;
+        let mut datum = datum;
 
         let datum = match autoref {
             &AutoBorrowVec(..) => {
@@ -222,10 +229,13 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
             }
             &AutoUnsafe(..) |
             &AutoPtr(_, _, None) => {
+                if derefs > 0 {
+                    datum = unpack_datum!(bcx, deref_once(bcx, expr, datum, derefs));
+                }
                 unpack_datum!(bcx, auto_ref(bcx, datum, expr))
             }
             &AutoPtr(_, _, Some(box ref a)) => {
-                let datum = unpack_datum!(bcx, apply_autoref(a, bcx, expr, datum));
+                datum = unpack_datum!(bcx, apply_autoref(a, bcx, expr, datum, derefs));
                 unpack_datum!(bcx, auto_ref(bcx, datum, expr))
             }
             &ty::AutoUnsize(_, _, ty::UnsizeLength(len)) |
@@ -253,9 +263,8 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                         let align = C_uint(bcx.ccx(), 8);
                         let alloc_result = malloc_raw_dyn(bcx, ptr_unit_ty, vec_ty, ll_len, align);
                         bcx = alloc_result.bcx;
-                        Store(bcx,
-                              alloc_result.val,
-                              GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
+                        let base = GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]);
+                        Store(bcx, alloc_result.val, base);
                     } else {
                         let base = GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]);
                         let base = PointerCast(bcx, base,
@@ -269,6 +278,9 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                 scratch.to_expr_datum()
             }
             &AutoBorrowObj(..) => {
+                if derefs > 0 {
+                    datum = unpack_datum!(bcx, deref_once(bcx, expr, datum, derefs));
+                }
                 unpack_datum!(bcx, auto_borrow_obj(bcx, expr, datum))
             }
             _ => bcx.tcx().sess.span_bug(expr.span, "unsupported adjustment")
@@ -1799,6 +1811,7 @@ fn deref_once<'a>(bcx: &'a Block<'a>,
     let r = match ty::get(datum.ty).sty {
         ty::ty_uniq(content_ty) => {
             match ty::get(content_ty).sty {
+                // TODO change to unsized
                 ty::ty_vec(_, None) | ty::ty_str
                     => bcx.tcx().sess.span_bug(expr.span, "unexpected ~[T]"),
                 _ => deref_owned_pointer(bcx, expr, datum, content_ty),
@@ -1817,8 +1830,9 @@ fn deref_once<'a>(bcx: &'a Block<'a>,
         ty::ty_ptr(ty::mt { ty: content_ty, .. }) |
         ty::ty_rptr(_, ty::mt { ty: content_ty, .. }) => {
             match ty::get(content_ty).sty {
+                // TODO change to unsized
                 ty::ty_vec(_, None) | ty::ty_str
-                    => bcx.tcx().sess.span_bug(expr.span, "unexpected &[T]"),
+                    => bcx.tcx().sess.span_bug(expr.span, format!("unexpected: {}", ::util::ppaux::ty_to_str(bcx.tcx(), datum.ty)).as_slice()),
                 _ => {
                     assert!(!ty::type_needs_drop(bcx.tcx(), datum.ty));
 

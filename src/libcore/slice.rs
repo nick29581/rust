@@ -263,6 +263,16 @@ pub mod traits {
                 order::ne(self.iter(), other.iter())
         }
     }
+    impl<'a,T:Eq> Eq for &'a mut [T] {
+        fn eq(&self, other: & &'a mut [T]) -> bool {
+            self.len() == other.len() &&
+                order::eq(self.iter(), other.iter())
+        }
+        fn ne(&self, other: & &'a mut [T]) -> bool {
+            self.len() != other.len() ||
+                order::ne(self.iter(), other.iter())
+        }
+    }
 
     impl<T:Eq> Eq for ~[T] {
         #[inline]
@@ -272,10 +282,15 @@ pub mod traits {
     }
 
     impl<'a,T:TotalEq> TotalEq for &'a [T] {}
+    impl<'a,T:TotalEq> TotalEq for &'a mut [T] {}
 
     impl<T:TotalEq> TotalEq for ~[T] {}
 
     impl<'a,T:Eq, V: Vector<T>> Equiv<V> for &'a [T] {
+        #[inline]
+        fn equiv(&self, other: &V) -> bool { self.as_slice() == other.as_slice() }
+    }
+    impl<'a,T:Eq, V: Vector<T>> Equiv<V> for &'a mut [T] {
         #[inline]
         fn equiv(&self, other: &V) -> bool { self.as_slice() == other.as_slice() }
     }
@@ -291,6 +306,11 @@ pub mod traits {
         }
     }
 
+    impl<'a,T:TotalOrd> TotalOrd for &'a mut [T] {
+        fn cmp(&self, other: & &'a mut [T]) -> Ordering {
+            order::cmp(self.iter(), other.iter())
+        }
+    }
     impl<T: TotalOrd> TotalOrd for ~[T] {
         #[inline]
         fn cmp(&self, other: &~[T]) -> Ordering { self.as_slice().cmp(&other.as_slice()) }
@@ -310,6 +330,23 @@ pub mod traits {
         }
         #[inline]
         fn gt(&self, other: & &'a [T]) -> bool {
+            order::gt(self.iter(), other.iter())
+        }
+    }
+    impl<'a, T: Ord> Ord for &'a mut [T] {
+        fn lt(&self, other: & &'a mut [T]) -> bool {
+            order::lt(self.iter(), other.iter())
+        }
+        #[inline]
+        fn le(&self, other: & &'a mut [T]) -> bool {
+            order::le(self.iter(), other.iter())
+        }
+        #[inline]
+        fn ge(&self, other: & &'a mut [T]) -> bool {
+            order::ge(self.iter(), other.iter())
+        }
+        #[inline]
+        fn gt(&self, other: & &'a mut [T]) -> bool {
             order::gt(self.iter(), other.iter())
         }
     }

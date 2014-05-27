@@ -570,10 +570,7 @@ pub fn ast_ty_to_ty<AC:AstConv, RS:RegionScope>(
                            |ty| ty::mk_uniq(tcx, ty))
             }
             ast::TyVec(ty) => {
-                tcx.sess.span_err(ast_ty.span, "bare `[]` is not a type");
-                // return /something/ so they can at least get more errors
-                let vec_ty = ty::mk_vec(tcx, ast_ty_to_ty(this, rscope, ty), None);
-                ty::mk_uniq(tcx, vec_ty)
+                ty::mk_vec(tcx, ast_ty_to_ty(this, rscope, ty), None)
             }
             ast::TyPtr(ref mt) => {
                 ty::mk_ptr(tcx, ty::mt {
