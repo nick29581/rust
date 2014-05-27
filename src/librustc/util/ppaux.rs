@@ -359,6 +359,7 @@ pub fn ty_to_str(cx: &ctxt, typ: t) -> String {
           buf.push_str(mt_to_str(cx, tm).as_slice());
           buf
       }
+      ty_open(typ) => format_strbuf!("opened<{}>", ty_to_str(cx, typ)),
       ty_tup(ref elems) => {
         let strs: Vec<String> = elems.iter().map(|elem| ty_to_str(cx, *elem)).collect();
         format!("({})", strs.connect(","))

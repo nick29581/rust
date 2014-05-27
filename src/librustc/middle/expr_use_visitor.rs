@@ -577,7 +577,7 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                                 debug!("walk_adjustment: cmt_derefd={}",
                                        cmt_derefd.repr(self.tcx()));
 
-                                self.walk_autoref(expr, r, n, cmt_derefd);
+                                self.walk_autoref(expr, r, cmt_derefd);
                             }
                         }
                     }
@@ -622,36 +622,30 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
     fn walk_autoref(&mut self,
                     expr: &ast::Expr,
                     autoref: &ty::AutoRef,
-                    autoderefs: uint,
                     cmt_derefd: mc::cmt) {
-        debug!("walk_autoref expr={} autoderefs={}", expr.repr(self.tcx()), autoderefs);
+        debug!("walk_autoref expr={}", expr.repr(self.tcx()));
 
         match *autoref {
-            ty::AutoPtr(r, m, ref a) => {
-                match *a {
-                    Some(box ref a) => {
-                        self.walk_autoref(expr, a, autoderefs, cmt_derefd)
-                    }
-                    None => {
+            ty::AutoPtr(r, m, _) => {
+                self.delegate.borrow(expr.id,
+                                     expr.span,
+                                     cmt_derefd,
+                                     r,
+                                     ty::BorrowKind::from_mutbl(m),
+                                     AutoRef);
+                /*match *a {
+                    None | Some(box ref ty::AutoUnsize(..)) => {
                         self.delegate.borrow(expr.id,
                                              expr.span,
-                                             cmt_derefd.clone(),
+                                             cmt_derefd,
                                              r,
                                              ty::BorrowKind::from_mutbl(m),
                                              AutoRef);
                     }
-                }
-            }
-            ty::AutoBorrowVec(r, m) |
-            ty::AutoUnsize(r, m, _) |
-            ty::AutoUnsizeRef(r, m, _) => {
-                let cmt_index = self.mc.cat_index(expr, cmt_derefd, autoderefs+1);
-                self.delegate.borrow(expr.id,
-                                     expr.span,
-                                     cmt_index,
-                                     r,
-                                     ty::BorrowKind::from_mutbl(m),
-                                     AutoRef)
+                    Some(box ref a) => {
+                        self.walk_autoref(expr, a, cmt_derefd)
+                    }
+                }*/
             }
             ty::AutoBorrowObj(r, m) => {
                 let cmt_deref = self.mc.cat_deref_obj(expr, cmt_derefd);
@@ -662,7 +656,7 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                                      ty::BorrowKind::from_mutbl(m),
                                      AutoRef)
             }
-            ty::AutoUnsafe(_) | ty::AutoUnsizeUniq(_) => {}
+            ty::AutoUnsafe(_) | ty::AutoUnsizeUniq(_) | ty::AutoUnsize(_) => {}
         }
     }
 

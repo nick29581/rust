@@ -99,17 +99,16 @@ pub fn get_drop_glue_type(ccx: &CrateContext, t: ty::t) -> ty::t {
             ty::mk_box(tcx, ty::mk_i8()),
 
         ty::ty_uniq(typ) if !ty::type_needs_drop(tcx, typ) => {
-            match ty::get(typ).sty {
-                ty::ty_vec(_, None) | ty::ty_str | ty::ty_trait(..) => t,
-                _ => {
-                    let llty = sizing_type_of(ccx, typ);
-                    // `Box<ZeroSizeType>` does not allocate.
-                    if llsize_of_alloc(ccx, llty) == 0 {
-                        ty::mk_i8()
-                    } else {
-                        ty::mk_uniq(tcx, ty::mk_i8())
-                    }
+            if ty::type_is_sized(tcx, typ) {
+                let llty = sizing_type_of(ccx, typ);
+                // `Box<ZeroSizeType>` does not allocate.
+                if llsize_of_alloc(ccx, llty) == 0 {
+                    ty::mk_i8()
+                } else {
+                    ty::mk_uniq(tcx, ty::mk_i8())
                 }
+            } else {
+                t
             }
         }
         _ => t

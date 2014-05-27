@@ -63,7 +63,7 @@ use middle::trans::tvec;
 use middle::trans::type_of;
 use middle::ty::struct_fields;
 use middle::ty::{AutoBorrowObj, AutoDerefRef, AutoAddEnv, AutoObject, AutoUnsafe};
-use middle::ty::{AutoPtr, AutoBorrowVec};
+use middle::ty::{AutoPtr};
 use middle::ty;
 use middle::typeck;
 use middle::typeck::MethodCall;
@@ -160,6 +160,14 @@ pub fn trans<'a>(bcx: &'a Block<'a>,
     return DatumBlock::new(bcx, datum);
 }
 
+pub fn get_len(bcx: &Block, fat_ptr: ValueRef) -> ValueRef {
+    GEPi(bcx, fat_ptr, [0u, abi::slice_elt_len])
+}
+
+pub fn get_dataptr(bcx: &Block, fat_ptr: ValueRef) -> ValueRef {
+    GEPi(bcx, fat_ptr, [0u, abi::slice_elt_base])
+}
+
 fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                          expr: &ast::Expr,
                          datum: Datum<Expr>)
@@ -216,64 +224,37 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                          datum: Datum<Expr>)
                          -> DatumBlock<'a, Expr> {
         let mut bcx = bcx;
+        let mut datum = datum;
 
         let datum = match autoref {
-            &AutoBorrowVec(..) => {
-                // Theoretically nothing to do, but the old value is going to
-                // get deleted - I'm not really sure why, but I guess because
-                // there is cleanup scheduled somewhere. Would be nice if we
-                // could forget about that cleanup.
-                unpack_datum!(bcx, copy_fat_ptr(bcx, expr, datum))
+            &AutoUnsafe(..) => {
+                debug!("AutoUnsafe");
+                unpack_datum!(bcx, ref_ptr(bcx, expr, datum))
             }
-            &AutoUnsafe(..) |
-            &AutoPtr(_, _, None) => {
-                unpack_datum!(bcx, auto_ref(bcx, datum, expr))
-            }
-            &AutoPtr(_, _, Some(box ref a)) => {
-                let datum = unpack_datum!(bcx, apply_autoref(a, bcx, expr, datum));
-                unpack_datum!(bcx, auto_ref(bcx, datum, expr))
-            }
-            &ty::AutoUnsize(_, _, ty::UnsizeLength(len)) |
-            &ty::AutoUnsizeRef(_, _, ty::UnsizeLength(len)) => {
-                unpack_datum!(bcx, unsize_vec(bcx, expr, datum, len))
-            }
-            &ty::AutoUnsizeUniq(ty::UnsizeLength(len)) => {
-                let tcx = bcx.tcx();
-
-                let ll_len = C_uint(bcx.ccx(), len);
-                let unit_ty = ty::sequence_element_type(tcx, datum.ty);
-                let vec_ty = ty::mk_uniq(tcx, ty::mk_vec(tcx, unit_ty, None));
-                let scratch = rvalue_scratch_datum(bcx, vec_ty, "__adjust");
-
-                if len == 0 {
-                    Store(bcx,
-                          C_null(type_of::type_of(bcx.ccx(), unit_ty).ptr_to()),
-                          GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
-                } else {
-                    // Box<[(), ..n]> will not allocate, but ~[()] expects an
-                    // allocation of n bytes, so we must allocate here (yuck).
-                    let llty = type_of::type_of(bcx.ccx(), unit_ty);
-                    if llsize_of_alloc(bcx.ccx(), llty) == 0 {
-                        let ptr_unit_ty = type_of::type_of(bcx.ccx(), unit_ty).ptr_to();
-                        let align = C_uint(bcx.ccx(), 8);
-                        let alloc_result = malloc_raw_dyn(bcx, ptr_unit_ty, vec_ty, ll_len, align);
-                        bcx = alloc_result.bcx;
-                        Store(bcx,
-                              alloc_result.val,
-                              GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
-                    } else {
-                        let base = GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]);
-                        let base = PointerCast(bcx, base,
-                                               type_of::type_of(bcx.ccx(), datum.ty).ptr_to());
-                        bcx = datum.store_to(bcx, base);
-
-                    }
+            &AutoPtr(_, _, ref a) => {
+                debug!("AutoPtr");
+                match a {
+                    &Some(box ref a) => datum = unpack_datum!(bcx,
+                                                              apply_autoref(a, bcx, expr, datum)),
+                    _ => {}
                 }
+                unpack_datum!(bcx, ref_ptr(bcx, expr, datum))
+            }
+            &ty::AutoUnsize(ref k @ ty::UnsizeLength(_)) => {
+                debug!("AutoUnsize(UnsizeLength)");
+                unpack_datum!(bcx, unsize_vec(bcx, expr, datum, k))
+            }
+            &ty::AutoUnsize(ref k @ ty::UnsizeStruct(..)) => {
+                debug!("AutoUnsize");
+                unpack_datum!(bcx, unsize_struct(bcx, expr, datum, k))
+            }
 
-                Store(bcx, ll_len, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
-                scratch.to_expr_datum()
+            &ty::AutoUnsizeUniq(ty::UnsizeLength(len)) => {
+                debug!("AutoUnsizeUniq");
+                unpack_datum!(bcx, unsize_unique(bcx, datum, len))
             }
             &AutoBorrowObj(..) => {
+                debug!("AutoBorrowObj");
                 unpack_datum!(bcx, auto_borrow_obj(bcx, expr, datum))
             }
             _ => bcx.tcx().sess.span_bug(expr.span, "unsupported adjustment")
@@ -282,55 +263,131 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
         DatumBlock(bcx, datum)
     }
 
+    fn ref_ptr<'a>(bcx: &'a Block<'a>,
+                   expr: &ast::Expr,
+                   datum: Datum<Expr>)
+                   -> DatumBlock<'a, Expr> {
+        if !ty::type_is_sized(bcx.tcx(), datum.ty) {
+            debug!("Taking address of unsized type {}",
+                   bcx.ty_to_str(datum.ty));
+            ref_fat_ptr(bcx, expr, datum)
+        } else {
+            debug!("Taking address of sized type {}",
+                   bcx.ty_to_str(datum.ty));
+            auto_ref(bcx, datum, expr)
+        }
+    }
+
+    // Retrieve the information we are losing (making dynamic) in an unsizing
+    // adjustment.
+    fn unsized_info<'a>(bcx: &'a Block<'a>,
+                        kind: &ty::UnsizeKind) -> ValueRef {
+        match kind {
+            &ty::UnsizeLength(len) => C_uint(bcx.ccx(), len),
+            &ty::UnsizeStruct(box ref k, _) => unsized_info(bcx, k),
+            _ => bcx.tcx().sess.bug("unsupported adjustment in unsized_info")
+        }
+    }
+
+    fn unsize_struct<'a>(bcx: &'a Block<'a>,
+                         expr: &ast::Expr,
+                         datum: Datum<Expr>,
+                         k: &ty::UnsizeKind)
+                         -> DatumBlock<'a, Expr> {
+        let tcx = bcx.tcx();
+        let unsized_ty = ty::unsize_ty(tcx, datum.ty, k, expr.span);
+        let dest_ty = ty::mk_open(tcx, unsized_ty);
+        let base = |bcx, val| PointerCast(bcx,
+                                          val,
+                                          type_of::type_of(bcx.ccx(), unsized_ty).ptr_to());
+        let len = |bcx, _val| unsized_info(bcx, k);
+        into_fat_ptr(bcx, expr, datum, dest_ty, base, len)
+
+    }
+
     fn unsize_vec<'a>(bcx: &'a Block<'a>,
                       expr: &ast::Expr,
                       datum: Datum<Expr>,
-                      len: uint)
+                      k: &ty::UnsizeKind)
                       -> DatumBlock<'a, Expr> {
-        let mut bcx = bcx;
         let tcx = bcx.tcx();
-        let unit_ty = ty::sequence_element_type(tcx, datum.ty);
+        let unsized_ty = ty::unsize_ty(tcx, datum.ty, k, expr.span);
+        let dest_ty = ty::mk_open(tcx, unsized_ty);
+        let base = |bcx, val| GEPi(bcx, val, [0u, 0u]);
+        let len = |bcx, _val| unsized_info(bcx, k);
+        into_fat_ptr(bcx, expr, datum, dest_ty, base, len)
+    }
+
+    fn ref_fat_ptr<'a>(bcx: &'a Block<'a>,
+                       expr: &ast::Expr,
+                       datum: Datum<Expr>)
+                       -> DatumBlock<'a, Expr> {
+        let tcx = bcx.tcx();
+        let dest_ty = ty::close_type(tcx, datum.ty);
+        let base = |bcx, val| Load(bcx, get_dataptr(bcx, val));
+        let len = |bcx, val| Load(bcx, get_len(bcx, val));
+        into_fat_ptr(bcx, expr, datum, dest_ty, base, len)
+    }
+
+    fn into_fat_ptr<'a>(bcx: &'a Block<'a>,
+                        expr: &ast::Expr,
+                        datum: Datum<Expr>,
+                        dest_ty: ty::t,
+                        base: |&'a Block<'a>, ValueRef| -> ValueRef,
+                        len: |&'a Block<'a>, ValueRef| -> ValueRef)
+                        -> DatumBlock<'a, Expr> {
+        let mut bcx = bcx;
 
         // Arrange cleanup
-        let base = unpack_datum!(bcx,
-                                 datum.to_lvalue_datum(bcx, "unsize", expr.id));
-        let base = base.get_vec_base(bcx);
-        let len = C_uint(bcx.ccx(), len);
+        let lval = unpack_datum!(bcx,
+                                 datum.to_lvalue_datum(bcx, "into_fat_ptr", expr.id));
+        let base = base(bcx, lval.val);
+        let len = len(bcx, lval.val);
 
-        // this type may have a different region/mutability than the
-        // real one, but it will have the same runtime representation
-        let slice_ty = ty::mk_slice(tcx, ty::ReStatic,
-                                    ty::mt { ty: unit_ty, mutbl: ast::MutImmutable });
+        let scratch = rvalue_scratch_datum(bcx, dest_ty, "__adjust");
+        Store(bcx, base, get_dataptr(bcx, scratch.val));
+        Store(bcx, len, get_len(bcx, scratch.val));
 
-        let scratch = rvalue_scratch_datum(bcx, slice_ty, "__adjust");
-        Store(bcx, base, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
-        Store(bcx, len, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
         DatumBlock(bcx, scratch.to_expr_datum())
     }
 
-    fn copy_fat_ptr<'a>(bcx: &'a Block<'a>,
-                        expr: &ast::Expr,
-                        datum: Datum<Expr>)
-                        -> DatumBlock<'a, Expr> {
+    fn unsize_unique<'a>(bcx: &'a Block<'a>,
+                         datum: Datum<Expr>,
+                         len: uint)
+                         -> DatumBlock<'a, Expr> {
         let mut bcx = bcx;
         let tcx = bcx.tcx();
 
+        let ll_len = C_uint(bcx.ccx(), len);
         let unit_ty = ty::sequence_element_type(tcx, datum.ty);
-        let lval = unpack_datum!(bcx,
-                                 datum.to_lvalue_datum(bcx, "unsize", expr.id));
+        let vec_ty = ty::mk_uniq(tcx, ty::mk_vec(tcx, unit_ty, None));
+        let scratch = rvalue_scratch_datum(bcx, vec_ty, "__adjust");
 
-        // this type may have a different region/mutability than the
-        // real one, but it will have the same runtime representation
-        let slice_ty = ty::mk_slice(tcx, ty::ReStatic,
-                                    ty::mt { ty: unit_ty, mutbl: ast::MutImmutable });
+        if len == 0 {
+            Store(bcx,
+                  C_null(type_of::type_of(bcx.ccx(), unit_ty).ptr_to()),
+                  get_dataptr(bcx, scratch.val));
+        } else {
+            // Box<[(), ..n]> will not allocate, but ~[()] expects an
+            // allocation of n bytes, so we must allocate here (yuck).
+            let llty = type_of::type_of(bcx.ccx(), unit_ty);
+            if llsize_of_alloc(bcx.ccx(), llty) == 0 {
+                let ptr_unit_ty = type_of::type_of(bcx.ccx(), unit_ty).ptr_to();
+                let align = C_uint(bcx.ccx(), 8);
+                let alloc_result = malloc_raw_dyn(bcx, ptr_unit_ty, vec_ty, ll_len, align);
+                bcx = alloc_result.bcx;
+                let base = get_dataptr(bcx, scratch.val);
+                Store(bcx, alloc_result.val, base);
+            } else {
+                let base = get_dataptr(bcx, scratch.val);
+                let base = PointerCast(bcx, base,
+                                       type_of::type_of(bcx.ccx(), datum.ty).ptr_to());
+                bcx = datum.store_to(bcx, base);
 
-        let scratch = rvalue_scratch_datum(bcx, slice_ty, "__adjust");
-        let base = Load(bcx, GEPi(bcx, lval.val, [0u, abi::slice_elt_base]));
-        Store(bcx, base, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
+            }
+        }
 
-        let len = Load(bcx, GEPi(bcx, lval.val, [0u, abi::slice_elt_len]));
-        Store(bcx, len, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
-
+        Store(bcx, ll_len, get_len(bcx, scratch.val));
         DatumBlock(bcx, scratch.to_expr_datum())
     }
 
@@ -523,13 +580,26 @@ fn trans_rec_field<'a>(bcx: &'a Block<'a>,
     let _icx = push_ctxt("trans_rec_field");
 
     let base_datum = unpack_datum!(bcx, trans_to_lvalue(bcx, base, "field"));
-    let repr = adt::represent_type(bcx.ccx(), base_datum.ty);
-    with_field_tys(bcx.tcx(), base_datum.ty, None, |discr, field_tys| {
+    let bare_ty = ty::unopen_type(base_datum.ty);
+    let repr = adt::represent_type(bcx.ccx(), bare_ty);
+    with_field_tys(bcx.tcx(), bare_ty, None, |discr, field_tys| {
             let ix = ty::field_idx_strict(bcx.tcx(), field.name, field_tys);
             let d = base_datum.get_element(
+                bcx,
                 field_tys[ix].mt.ty,
                 |srcval| adt::trans_field_ptr(bcx, &*repr, srcval, discr, ix));
-            DatumBlock { datum: d.to_expr_datum(), bcx: bcx }
+
+            if ty::type_is_sized(bcx.tcx(), d.ty) {
+                DatumBlock { datum: d.to_expr_datum(), bcx: bcx }
+            } else {
+                let scratch = rvalue_scratch_datum(bcx, ty::mk_open(bcx.tcx(), d.ty), "");
+                Store(bcx, d.val, get_dataptr(bcx, scratch.val));
+                let len = Load(bcx, get_len(bcx, base_datum.val));
+                Store(bcx, len, get_len(bcx, scratch.val));
+
+                DatumBlock(bcx, scratch.to_expr_datum())
+
+            }
         })
 }
 
@@ -1171,8 +1241,10 @@ fn trans_adt<'a>(
         let base_datum = unpack_datum!(bcx, trans_to_lvalue(bcx, &*base.expr, "base"));
         for &(i, t) in base.fields.iter() {
             let datum = base_datum.get_element(
+                bcx,
                 t,
                 |srcval| adt::trans_field_ptr(bcx, repr, srcval, discr, i));
+            assert!(ty::type_is_sized(bcx.tcx(), datum.ty));
             let dest = adt::trans_field_ptr(bcx, repr, addr, discr, i);
             bcx = datum.store_to(bcx, dest);
         }
@@ -1307,8 +1379,28 @@ fn trans_addr_of<'a>(bcx: &'a Block<'a>,
     let _icx = push_ctxt("trans_addr_of");
     let mut bcx = bcx;
     let sub_datum = unpack_datum!(bcx, trans_to_lvalue(bcx, subexpr, "addr_of"));
-    let ty = expr_ty(bcx, expr);
-    return immediate_rvalue_bcx(bcx, sub_datum.val, ty).to_expr_datumblock();
+    match ty::get(sub_datum.ty).sty {
+        ty::ty_open(_) => {
+            // Opened DST value, close to a fat pointer
+            debug!("Closing fat pointer {}", bcx.ty_to_str(sub_datum.ty));
+
+            let scratch = rvalue_scratch_datum(bcx,
+                                               ty::close_type(bcx.tcx(), sub_datum.ty),
+                                               "fat_addr_of");
+            let base = Load(bcx, get_dataptr(bcx, sub_datum.val));
+            Store(bcx, base, get_dataptr(bcx, scratch.val));
+
+            let len = Load(bcx, get_len(bcx, sub_datum.val));
+            Store(bcx, len, get_len(bcx, scratch.val));
+
+            DatumBlock(bcx, scratch.to_expr_datum())
+        }
+        _ => {
+            // Sized value, ref to a thin pointer
+            let ty = expr_ty(bcx, expr);
+            immediate_rvalue_bcx(bcx, sub_datum.val, ty).to_expr_datumblock()
+        }
+    }
 }
 
 // Important to get types for both lhs and rhs, because one might be _|_
@@ -1633,15 +1725,18 @@ pub enum cast_kind {
     cast_other,
 }
 
-pub fn cast_type_kind(t: ty::t) -> cast_kind {
+pub fn cast_type_kind(tcx: &ty::ctxt, t: ty::t) -> cast_kind {
     match ty::get(t).sty {
         ty::ty_char        => cast_integral,
         ty::ty_float(..)   => cast_float,
         ty::ty_ptr(..)     => cast_pointer,
-        ty::ty_rptr(_, mt) => match ty::get(mt.ty).sty{
-            ty::ty_vec(_, None) | ty::ty_str | ty::ty_trait(..) => cast_other,
-            _ => cast_pointer,
-        },
+        ty::ty_rptr(_, mt) => {
+            if ty::type_is_sized(tcx, mt.ty) {
+                cast_pointer
+            } else {
+                cast_other
+            }
+        }
         ty::ty_bare_fn(..) => cast_pointer,
         ty::ty_int(..)     => cast_integral,
         ty::ty_uint(..)    => cast_integral,
@@ -1661,8 +1756,8 @@ fn trans_imm_cast<'a>(bcx: &'a Block<'a>,
 
     let t_in = expr_ty(bcx, expr);
     let t_out = node_id_type(bcx, id);
-    let k_in = cast_type_kind(t_in);
-    let k_out = cast_type_kind(t_out);
+    let k_in = cast_type_kind(bcx.tcx(), t_in);
+    let k_out = cast_type_kind(bcx.tcx(), t_out);
     let s_in = k_in == cast_integral && ty::type_is_signed(t_in);
     let ll_t_in = type_of::type_of(ccx, t_in);
     let ll_t_out = type_of::type_of(ccx, t_out);
@@ -1850,10 +1945,14 @@ fn deref_once<'a>(bcx: &'a Block<'a>,
 
     let r = match ty::get(datum.ty).sty {
         ty::ty_uniq(content_ty) => {
-            match ty::get(content_ty).sty {
-                ty::ty_vec(_, None) | ty::ty_str | ty::ty_trait(..)
-                    => bcx.tcx().sess.span_bug(expr.span, "unexpected unsized box"),
-                _ => deref_owned_pointer(bcx, expr, datum, content_ty),
+            if ty::type_is_sized(bcx.tcx(), content_ty) {
+                deref_owned_pointer(bcx, expr, datum, content_ty)
+            } else {
+                // A fat pointer and an opened DST value have the same represenation
+                // just different types.
+                DatumBlock(bcx, Datum(datum.val,
+                                      ty::mk_open(bcx.tcx(), content_ty),
+                                      datum.kind))
             }
         }
 
@@ -1868,21 +1967,21 @@ fn deref_once<'a>(bcx: &'a Block<'a>,
 
         ty::ty_ptr(ty::mt { ty: content_ty, .. }) |
         ty::ty_rptr(_, ty::mt { ty: content_ty, .. }) => {
-            match ty::get(content_ty).sty {
-                ty::ty_vec(_, None) | ty::ty_str | ty::ty_trait(..)
-                    => bcx.tcx().sess.span_bug(expr.span, "unexpected unsized reference"),
-                _ => {
-                    assert!(!ty::type_needs_drop(bcx.tcx(), datum.ty));
+            if ty::type_is_sized(bcx.tcx(), content_ty) {
+                let ptr = datum.to_llscalarish(bcx);
 
-                    let ptr = datum.to_llscalarish(bcx);
-
-                    // Always generate an lvalue datum, even if datum.mode is
-                    // an rvalue.  This is because datum.mode is only an
-                    // rvalue for non-owning pointers like &T or *T, in which
-                    // case cleanup *is* scheduled elsewhere, by the true
-                    // owner (or, in the case of *T, by the user).
-                    DatumBlock::new(bcx, Datum::new(ptr, content_ty, LvalueExpr))
-                }
+                // Always generate an lvalue datum, even if datum.mode is
+                // an rvalue.  This is because datum.mode is only an
+                // rvalue for non-owning pointers like &T or *T, in which
+                // case cleanup *is* scheduled elsewhere, by the true
+                // owner (or, in the case of *T, by the user).
+                DatumBlock(bcx, Datum(ptr, content_ty, LvalueExpr))
+            } else {
+                // A fat pointer and an opened DST value have the same represenation
+                // just different types.
+                DatumBlock(bcx, Datum(datum.val,
+                                      ty::mk_open(bcx.tcx(), content_ty),
+                                      datum.kind))
             }
         }
 

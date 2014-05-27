@@ -3077,8 +3077,8 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
                         fn is_vec(t: ty::t) -> bool {
                             match ty::get(t).sty {
                                 ty::ty_vec(..) => true,
-                                ty::ty_ptr(ty::mt{ty: t, ..}) | ty::ty_rptr(_, ty::mt{ty: t, ..}) |
-                                ty::ty_box(t) | ty::ty_uniq(t) => match ty::get(t).sty {
+                                ty::ty_ptr(ty::mt{ty, ..}) | ty::ty_rptr(_, ty::mt{ty, ..}) |
+                                ty::ty_box(ty) | ty::ty_uniq(ty) => match ty::get(ty).sty {
                                     ty::ty_vec(_, None) => true,
                                     _ => false,
                                 },

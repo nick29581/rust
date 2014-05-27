@@ -204,7 +204,7 @@ pub fn opt_deref_kind(t: ty::t) -> Option<deref_kind> {
             Some(deref_interior(InteriorField(PositionalField(0))))
         }
 
-        ty::ty_vec(_, Some(_)) => {
+        ty::ty_vec(_, _) | ty::ty_str => {
             Some(deref_interior(InteriorElement(element_kind(t))))
         }
 
@@ -218,7 +218,7 @@ pub fn deref_kind(tcx: &ty::ctxt, t: ty::t) -> deref_kind {
       Some(k) => k,
       None => {
         tcx.sess.bug(
-            format!("deref_cat() invoked on non-derefable type {}",
+            format!("deref_kind() invoked on non-derefable type {}",
                     ty_to_str(tcx, t)).as_slice());
       }
     }
@@ -450,7 +450,7 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
             }
 
             let base_cmt = if_ok!(self.cat_expr(&**base));
-            Ok(self.cat_index(expr, base_cmt, 0))
+            Ok(self.cat_index(expr, base_cmt))
           }
 
           ast::ExprPath(_) => {
@@ -761,13 +761,9 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
 
     pub fn cat_index<N:ast_node>(&self,
                                  elt: &N,
-                                 base_cmt: cmt,
-                                 derefs: uint)
+                                 base_cmt: cmt)
                                  -> cmt {
-        //! Creates a cmt for an indexing operation (`[]`); this
-        //! indexing operation may occurs as part of an
-        //! AutoBorrowVec, which when converting a `~[]` to an `&[]`
-        //! effectively takes the address of the 0th element.
+        //! Creates a cmt for an indexing operation (`[]`).
         //!
         //! One subtle aspect of indexing that may not be
         //! immediately obvious: for anything other than a fixed-length
@@ -780,20 +776,9 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
         //! cmt containing both this deref and the indexing,
         //! presuming that `base_cmt` is not of fixed-length type.
         //!
-        //! In the event that a deref is needed, the "deref count"
-        //! is taken from the parameter `derefs`. See the comment
-        //! on the def'n of `root_map_key` in borrowck/mod.rs
-        //! for more details about deref counts; the summary is
-        //! that `derefs` should be 0 for an explicit indexing
-        //! operation and N+1 for an indexing that is part of
-        //! an auto-adjustment, where N is the number of autoderefs
-        //! in that adjustment.
-        //!
         //! # Parameters
         //! - `elt`: the AST node being indexed
         //! - `base_cmt`: the cmt of `elt`
-        //! - `derefs`: the deref number to be used for
-        //!   the implicit index deref, if any (see above)
 
         let element_ty = match ty::index(base_cmt.ty) {
           Some(ty) => ty,
@@ -805,30 +790,8 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
           }
         };
 
-        return match deref_kind(self.tcx(), base_cmt.ty) {
-          deref_ptr(ptr) => {
-            // for unique ptrs, we inherit mutability from the
-            // owning reference.
-            let m = MutabilityCategory::from_pointer_kind(base_cmt.mutbl, ptr);
-
-            // the deref is explicit in the resulting cmt
-            let deref_cmt = Rc::new(cmt_ {
-                id:elt.id(),
-                span:elt.span(),
-                cat:cat_deref(base_cmt.clone(), derefs, ptr),
-                mutbl:m,
-                ty:element_ty
-            });
-
-            interior(elt, deref_cmt, base_cmt.ty, m.inherit(), element_ty)
-          }
-
-          deref_interior(_) => {
-            // fixed-length vectors have no deref
-            let m = base_cmt.mutbl.inherit();
-            interior(elt, base_cmt.clone(), base_cmt.ty, m, element_ty)
-          }
-        };
+        let m = base_cmt.mutbl.inherit();
+        return interior(elt, base_cmt.clone(), base_cmt.ty, m, element_ty);
 
         fn interior<N: ast_node>(elt: &N,
                                  of_cmt: cmt,
@@ -843,6 +806,37 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
                 mutbl:mutbl,
                 ty:element_ty
             })
+        }
+    }
+
+    // Takes either a vec or a reference to a vec and returns the cmt for the
+    // underlying vec.
+    fn deref_vec<N:ast_node>(&self,
+                             elt: &N,
+                             base_cmt: cmt)
+                             -> cmt {
+        match deref_kind(self.tcx(), base_cmt.ty) {
+            deref_ptr(ptr) => {
+                // for unique ptrs, we inherit mutability from the
+                // owning reference.
+                let m = MutabilityCategory::from_pointer_kind(base_cmt.mutbl, ptr);
+
+                // the deref is explicit in the resulting cmt
+                Rc::new(cmt_ {
+                    id:elt.id(),
+                    span:elt.span(),
+                    cat:cat_deref(base_cmt.clone(), 0, ptr),
+                    mutbl:m,
+                    ty: match ty::deref(base_cmt.ty, false) {
+                        Some(mt) => mt.ty,
+                        None => self.tcx().sess.bug("Found non-derefable type")
+                    }
+                })
+            }
+
+            deref_interior(_) => {
+                base_cmt
+            }
         }
     }
 
@@ -864,7 +858,7 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
         let (slice_mutbl, slice_r) = vec_slice_info(self.tcx(),
                                                     slice_pat,
                                                     slice_ty);
-        let cmt_slice = self.cat_index(slice_pat, vec_cmt, 0);
+        let cmt_slice = self.cat_index(slice_pat, self.deref_vec(slice_pat, vec_cmt));
         return Ok((cmt_slice, slice_mutbl, slice_r));
 
         fn vec_slice_info(tcx: &ty::ctxt,
@@ -1072,7 +1066,7 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
           }
 
           ast::PatVec(ref before, slice, ref after) => {
-              let elt_cmt = self.cat_index(pat, cmt, 0);
+              let elt_cmt = self.cat_index(pat, self.deref_vec(pat, cmt));
               for before_pat in before.iter() {
                   if_ok!(self.cat_pattern(elt_cmt.clone(), &**before_pat,
                                           |x,y,z| op(x,y,z)));

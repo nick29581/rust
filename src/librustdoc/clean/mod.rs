@@ -1296,6 +1296,7 @@ impl Clean<Type> for ty::t {
             }
 
             ty::ty_infer(..) => fail!("ty_infer"),
+            ty::ty_open(..) => fail!("ty_open"),
             ty::ty_err => fail!("ty_err"),
         }
     }

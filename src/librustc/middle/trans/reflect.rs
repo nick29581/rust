@@ -151,13 +151,19 @@ impl<'a, 'b> Reflector<'a, 'b> {
           ty::ty_float(ast::TyF64) => self.leaf("f64"),
           ty::ty_float(ast::TyF128) => self.leaf("f128"),
 
+          _ if !ty::type_is_sized(tcx, t) => fail!("unexpected unsized type"),
+          ty::ty_str | ty::ty_vec(_, None) | ty::ty_open(_) => {
+              fail!("should have been caught by unsized check")
+          }
+
+
           // Should rename to vec_*.
           ty::ty_vec(ty, Some(sz)) => {
               let mut extra = (vec!(self.c_uint(sz))).append(self.c_size_and_align(t).as_slice());
               extra.push(self.c_tydesc(ty));
               self.visit("evec_fixed", extra.as_slice())
           }
-          ty::ty_vec(..) | ty::ty_str | ty::ty_trait(..) => fail!("unexpected unsized type"),
+          ty::ty_trait(..) => fail!("unexpected unsized type"),
           // Should remove mt from box and uniq.
           ty::ty_box(typ) => {
               let extra = self.c_mt(&ty::mt {
