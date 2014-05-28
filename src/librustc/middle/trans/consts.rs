@@ -243,16 +243,6 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                                         llconst = const_addr_of(cx, llconst);
                                     }
                                 }
-                                ty::AutoBorrowVec(ty::ReStatic, m) => {
-                                    assert!(m != ast::MutMutable);
-
-                                    // Don't copy data to do a deref+ref
-                                    // (i.e., skip the last auto-deref).
-                                    if adj.autoderefs == 0 {
-                                        inlineable = false;
-                                        llconst = const_addr_of(cx, llconst);
-                                    }
-                                }
                                 ty::AutoUnsizeRef(..) => {
                                     // If there were autoderefs, we would have to do
                                     // the last one here, but that should not happen.
@@ -490,8 +480,8 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
             let llty = type_of::type_of(cx, ety);
             let basety = ty::expr_ty(cx.tcx(), base);
             let (v, inlineable) = const_expr(cx, base, is_local);
-            return (match (expr::cast_type_kind(basety),
-                           expr::cast_type_kind(ety)) {
+            return (match (expr::cast_type_kind(cx.tcx(), basety),
+                           expr::cast_type_kind(cx.tcx(), ety)) {
 
               (expr::cast_integral, expr::cast_integral) => {
                 let s = ty::type_is_signed(basety) as Bool;
@@ -516,7 +506,7 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                 let repr = adt::represent_type(cx, basety);
                 let discr = adt::const_get_discrim(cx, &*repr, v);
                 let iv = C_integral(cx.int_type, discr, false);
-                let ety_cast = expr::cast_type_kind(ety);
+                let ety_cast = expr::cast_type_kind(cx.tcx(), ety);
                 match ety_cast {
                     expr::cast_integral => {
                         let s = ty::type_is_signed(ety) as Bool;

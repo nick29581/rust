@@ -390,7 +390,7 @@ impl<'a> LookupContext<'a> {
         // need to try coercing a `~[T]` to an `&[T]` and
         // searching for an overloaded deref on *that*.
         if !self.is_overloaded_deref() {
-            match self.search_for_autosliced_method(self_ty, autoderefs) {
+            match self.search_for_autofatptrd_method(self_ty, autoderefs) {
                 Some(result) => return Some(Some(result)),
                 None => {}
             }
@@ -738,7 +738,7 @@ impl<'a> LookupContext<'a> {
             None => None,
             Some(method) => {
                 debug!("(searching for autoderef'd method) writing \
-                       adjustment {:?} for {}", adjustment, self.ty_to_str( self_ty));
+                       adjustment {:?} for {}", adjustment, self.ty_to_str(self_ty));
                 match adjustment {
                     Some((self_expr_id, adj)) => {
                         self.fcx.write_adjustment(self_expr_id, adj);
@@ -782,16 +782,10 @@ impl<'a> LookupContext<'a> {
             ty::ty_rptr(_, self_mt) => {
                 let region =
                     self.infcx().next_region_var(infer::Autoref(self.span));
-                // TODO remove extra_derefs
-                let (extra_derefs, auto) = match ty::get(self_mt.ty).sty {
-                    ty::ty_vec(_, None) |
-                    ty::ty_str => (1, ty::AutoBorrowVec(region, self_mt.mutbl)),
-                    _ => (1, ty::AutoPtr(region, self_mt.mutbl, None)),
-                };
                 (ty::mk_rptr(tcx, region, self_mt),
                  ty::AutoDerefRef {
-                     autoderefs: autoderefs + extra_derefs,
-                     autoref: Some(auto)})
+                     autoderefs: autoderefs + 1,
+                     autoref: Some(ty::AutoPtr(region, self_mt.mutbl, None))})
             }
 
             ty::ty_trait(box ty::TyTrait {
@@ -833,7 +827,7 @@ impl<'a> LookupContext<'a> {
 
         // First try to borrow to a slice
         let entry = self.search_for_some_kind_of_autorefd_method(
-            AutoBorrowVec, autoderefs, [MutImmutable, MutMutable],
+            |r, m| AutoPtr(r, m, None), autoderefs, [MutImmutable, MutMutable],
             |m,r| ty::mk_slice(tcx, r,
                                ty::mt {ty:ty, mutbl:m}));
 
@@ -843,7 +837,7 @@ impl<'a> LookupContext<'a> {
 
         // Then try to borrow to a slice *and* borrow a pointer.
         self.search_for_some_kind_of_autorefd_method(
-            |r, m| AutoPtr(r, ast::MutImmutable, Some( box AutoBorrowVec(r, m))),
+            |r, m| AutoPtr(r, ast::MutImmutable, Some( box AutoPtr(r, m, None))),
             autoderefs, [MutImmutable, MutMutable],
             |m, r| {
                 let slice_ty = ty::mk_slice(tcx, r,
@@ -897,15 +891,15 @@ impl<'a> LookupContext<'a> {
         debug!("auto_slice_str");
 
         let entry = self.search_for_some_kind_of_autorefd_method(
-            AutoBorrowVec, autoderefs, [MutImmutable],
-            |_m,r| ty::mk_str_slice(tcx, r, MutImmutable));
+            |r, m| AutoPtr(r, m, None), autoderefs, [MutImmutable],
+            |_m, r| ty::mk_str_slice(tcx, r, MutImmutable));
 
         if entry.is_some() {
             return entry;
         }
 
         self.search_for_some_kind_of_autorefd_method(
-            |r, m| AutoPtr(r, ast::MutImmutable, Some( box AutoBorrowVec(r, m))),
+            |r, m| AutoPtr(r, ast::MutImmutable, Some( box AutoPtr(r, m, None))),
             autoderefs, [MutImmutable],
             |m, r| {
                 let slice_ty = ty::mk_str_slice(tcx, r, m);
@@ -913,22 +907,21 @@ impl<'a> LookupContext<'a> {
             })
     }
 
-    fn search_for_autosliced_method(&self,
-                                    self_ty: ty::t,
-                                    autoderefs: uint)
-                                    -> Option<MethodCallee> {
+    fn search_for_autofatptrd_method(&self,
+                                     self_ty: ty::t,
+                                     autoderefs: uint)
+                                     -> Option<MethodCallee> {
         /*!
          * Searches for a candidate by converting things like
          * `~[]` to `&[]`.
          */
 
         let tcx = self.tcx();
-        debug!("search_for_autosliced_method {}", ppaux::ty_to_str(tcx, self_ty));
+        debug!("search_for_autofatptrd_method {}", ppaux::ty_to_str(tcx, self_ty));
 
         let sty = ty::get(self_ty).sty.clone();
         match sty {
             ty_vec(ty, Some(len)) => self.auto_unsize_vec(ty, autoderefs, len),
-            // TODO why do we need these? - Because they are fat pointer deref/ref not thin pointer
             ty_vec(ty, None) => self.auto_slice_vec(ty, autoderefs),
             ty_str => self.auto_slice_str(autoderefs),
 
@@ -968,17 +961,13 @@ impl<'a> LookupContext<'a> {
 
         let tcx = self.tcx();
         match ty::get(self_ty).sty {
-            // TODO replace with unsized
-            // Fat pointers need special treatment.
-            ty_str | ty_vec(_, None) => None,
-
             ty_bare_fn(..) | ty_box(..) | ty_uniq(..) | ty_rptr(..) |
             ty_infer(IntVar(_)) |
             ty_infer(FloatVar(_)) |
             ty_self(_) | ty_param(..) | ty_nil | ty_bot | ty_bool |
             ty_char | ty_int(..) | ty_uint(..) |
             ty_float(..) | ty_enum(..) | ty_ptr(..) | ty_struct(..) | ty_tup(..) |
-            ty_vec(..) | ty_trait(..) | ty_closure(..) => {
+            ty_str | ty_vec(..) | ty_trait(..) | ty_closure(..) => {
                 self.search_for_some_kind_of_autorefd_method(
                     |r, m| AutoPtr(r, m, None), autoderefs, [MutImmutable, MutMutable],
                     |m,r| ty::mk_rptr(tcx, r, ty::mt {ty:self_ty, mutbl:m}))
@@ -1272,11 +1261,12 @@ impl<'a> LookupContext<'a> {
         match self.fcx.mk_subty(false, infer::Misc(span),
                                 rcvr_ty, transformed_self_ty) {
             Ok(_) => {}
-            Err(_) => {
+            Err(e) => {
                 self.bug(format!(
-                        "{} was a subtype of {} but now is not?",
+                        "{} was a subtype of {} but now is not? {:?}",
                         self.ty_to_str(rcvr_ty),
-                        self.ty_to_str(transformed_self_ty)).as_slice());
+                        self.ty_to_str(transformed_self_ty),
+                        e).as_slice());
             }
         }
 
@@ -1394,12 +1384,8 @@ impl<'a> LookupContext<'a> {
                 debug!("(is relevant?) explicit self is a region");
                 match ty::get(rcvr_ty).sty {
                     ty::ty_rptr(_, mt) => {
-                        match ty::get(mt.ty).sty {
-                            //TODO should be unsized
-                            ty::ty_vec(_, None) | ty::ty_str => false,
-                            _ => mutability_matches(mt.mutbl, m) &&
-                                 rcvr_matches_ty(self.fcx, mt.ty, candidate),
-                        }
+                        mutability_matches(mt.mutbl, m) &&
+                                    rcvr_matches_ty(self.fcx, mt.ty, candidate)
                     }
 
                     ty::ty_trait(box ty::TyTrait {
@@ -1416,12 +1402,7 @@ impl<'a> LookupContext<'a> {
             SelfUniq => {
                 debug!("(is relevant?) explicit self is a unique pointer");
                 match ty::get(rcvr_ty).sty {
-                    ty::ty_uniq(typ) => {
-                        match ty::get(typ).sty {
-                            ty::ty_vec(_, None) | ty::ty_str => false,
-                            _ => rcvr_matches_ty(self.fcx, typ, candidate),
-                        }
-                    }
+                    ty::ty_uniq(typ) => rcvr_matches_ty(self.fcx, typ, candidate),
 
                     ty::ty_trait(box ty::TyTrait {
                         def_id: self_did, store: UniqTraitStore, ..

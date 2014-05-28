@@ -65,7 +65,7 @@ we may want to adjust precisely when coercions occur.
 */
 
 
-use middle::ty::{AutoPtr, AutoBorrowObj, AutoDerefRef, AutoBorrowVec};
+use middle::ty::{AutoPtr, AutoBorrowObj, AutoDerefRef};
 use middle::ty::{mt};
 use middle::ty;
 use middle::typeck::infer::{CoerceResult, resolve_type, Coercion};
@@ -274,19 +274,10 @@ impl<'f> Coerce<'f> {
                                      mt {ty: inner_ty, mutbl: mutbl_b});
         if_ok!(sub.tys(a_borrowed, b));
 
-        // Kind of a hack for now - need to distinguish between deref-ref
-        // of regular pointers and DST fat pointers
-        match ty::get(inner_ty).sty {
-            ty::ty_str | ty::ty_vec(_, None) =>
-                Ok(Some(AutoDerefRef(AutoDerefRef {
-                        autoderefs: 1,
-                        autoref: Some(AutoBorrowVec(r_borrow, mutbl_b))
-                    }))),
-            _ => Ok(Some(AutoDerefRef(AutoDerefRef {
-                autoderefs: 1,
-                autoref: Some(AutoPtr(r_borrow, mutbl_b, None))
-            })))
-        }
+        Ok(Some(AutoDerefRef(AutoDerefRef {
+            autoderefs: 1,
+            autoref: Some(AutoPtr(r_borrow, mutbl_b, None))
+        })))
     }
 
     // [T, ..n] -> &[T] or &mut [T]
@@ -381,13 +372,69 @@ impl<'f> Coerce<'f> {
     // Takes a type and returns an unsized version along with the adjustment
     // performed to unsize it.
     // E.g., `[T, ..n]` -> `([T], UnsizeLength(n))`
-    fn unsize_ty(&self,
-                 sty_a: &ty::sty)
+    fn unsize_ty(&self, sty_a: &ty::sty)
                  -> Option<(ty::t, ty::UnsizeKind)> {
+        let tcx = self.get_ref().infcx.tcx;
         match *sty_a {
             ty::ty_vec(t_a, Some(len)) => {
-                let ty = ty::mk_vec(self.get_ref().infcx.tcx, t_a, None);
+                let ty = ty::mk_vec(tcx, t_a, None);
                 Some((ty, ty::UnsizeLength(len)))
+            }
+            ty::ty_struct(did, ref substs) => {
+                // Find the type of the last field in the struct and see if we
+                // can unsize it.
+                let fields = ty::lookup_struct_fields(tcx, did);
+                if fields.len() == 0 {
+                    return None;
+                }
+                let last_field = fields.get(fields.len()-1);
+                let field_ty = ty::lookup_field_type(tcx, did, last_field.id, substs);
+                match self.unsize_ty(&ty::get(field_ty).sty) {
+                    Some((field_ty, field_kind)) => {
+                        // The last field can be unsized, now we have to find a
+                        // substitution which gives us the correct field type.
+                        // We do this by trying to unsize each actual type
+                        // parameter in substs and seeing if that gets us the
+                        // right type for the last field.
+                        let mut new_substs: Option<ty::substs> = None;
+                        let mut index = 0u;
+                        for (i, tp) in substs.tps.iter().enumerate() {
+                            match self.unsize_ty(&ty::get(*tp).sty) {
+                                Some((utp, _)) => {
+                                    let mut unsized_substs = substs.clone();
+                                    *unsized_substs.tps.get_mut(i) = utp;
+                                    let subst_field_ty = ty::lookup_field_type(tcx,
+                                                                               did,
+                                                                               last_field.id,
+                                                                               &unsized_substs);
+                                    // TODO is this the way to do type comparison?
+                                    if ty::get(subst_field_ty).sty == ty::get(field_ty).sty {
+                                        new_substs = Some(unsized_substs);
+                                        index = i;
+                                        break;
+                                    }
+                                }
+                                None => {}
+                            }
+                        }
+                        match new_substs {
+                            Some(substs) => {
+                                let ty = ty::mk_struct(tcx, did, substs);
+                                Some((ty, ty::UnsizeStruct(box field_kind, index)))
+                            }
+                            //TODO make into an error or something
+
+                            // TODO it is possible we can unsize the last field
+                            // without changing any type params, in which case
+                            // we can't unsize the struct object.
+                            // Maybe better to test unsizing the type params rather
+                            // than the fields?
+                            None => None //fail!("didn't find a suitable substitution")
+                        }
+                    }
+                    // Can't unsize the last field's type, so no coercion to do
+                    _ => None
+                }
             }
             _ => None
         }

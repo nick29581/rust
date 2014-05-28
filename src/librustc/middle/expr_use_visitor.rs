@@ -637,10 +637,8 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                     }
                 }
             }
-            ty::AutoBorrowVec(r, m) |
             ty::AutoUnsize(r, m, _) |
             ty::AutoUnsizeRef(r, m, _) => {
-                //let cmt_index = self.mc.cat_index(expr, cmt_derefd, autoderefs+1);
                 self.delegate.borrow(expr.id,
                                      expr.span,
                                      cmt_derefd,

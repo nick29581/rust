@@ -2156,32 +2156,18 @@ fn type_metadata(cx: &CrateContext,
             create_pointer_to_box_metadata(cx, t, typ)
         }
         ty::ty_vec(typ, Some(len)) => fixed_vec_metadata(cx, typ, len, usage_site_span),
-        ty::ty_uniq(typ) => {
-            match ty::get(typ).sty {
-                ty::ty_vec(typ, None) => {
-                    let vec_metadata = vec_slice_metadata(cx, t, typ, usage_site_span);
-                    pointer_type_metadata(cx, t, vec_metadata)
-                }
-                ty::ty_str => {
-                    let i8_t = ty::mk_i8();
-                    let vec_metadata = vec_slice_metadata(cx, t, i8_t, usage_site_span);
-                    pointer_type_metadata(cx, t, vec_metadata)
-                }
-                _ => {
-                    let pointee = type_metadata(cx, typ, usage_site_span);
-                    pointer_type_metadata(cx, t, pointee)
-                }
-            }
-        }
-        ty::ty_ptr(ref mt) | ty::ty_rptr(_, ref mt) => {
-            match ty::get(mt.ty).sty {
+        // FIXME Can we do better than this for unsized vec/str fields?
+        ty::ty_vec(typ, None) => fixed_vec_metadata(cx, typ, 1, usage_site_span),
+        ty::ty_str => fixed_vec_metadata(cx, ty::mk_i8(), 1, usage_site_span),
+        ty::ty_uniq(ty) | ty::ty_ptr(ty::mt{ty, ..}) | ty::ty_rptr(_, ty::mt{ty, ..}) => {
+            match ty::get(ty).sty {
                 ty::ty_vec(typ, None) => vec_slice_metadata(cx, t, typ, usage_site_span),
                 ty::ty_str => {
                     let i8_t = ty::mk_i8();
                     vec_slice_metadata(cx, t, i8_t, usage_site_span)
                 }
                 _ => {
-                    let pointee = type_metadata(cx, mt.ty, usage_site_span);
+                    let pointee = type_metadata(cx, ty, usage_site_span);
                     pointer_type_metadata(cx, t, pointee)
                 }
             }

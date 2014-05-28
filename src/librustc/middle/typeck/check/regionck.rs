@@ -1139,10 +1139,8 @@ fn link_autoref(rcx: &Rcx,
             }
         }
 
-        ty::AutoBorrowVec(r, m) |
         ty::AutoUnsizeRef(r, m, _) |
         ty::AutoUnsize(r, m, _) => {
-            //let cmt_index = mc.cat_index(expr, expr_cmt, autoderefs);
             link_region(rcx, expr.span, r,
                         ty::BorrowKind::from_mutbl(m), expr_cmt);
         }

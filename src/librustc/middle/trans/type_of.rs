@@ -111,7 +111,7 @@ pub fn sizing_type_of(cx: &CrateContext, t: ty::t) -> Type {
     let llsizingty = match ty::get(t).sty {
         ty::ty_nil | ty::ty_bot => Type::nil(cx),
         ty::ty_bool => Type::bool(cx),
-        ty::ty_char => Type::char(cx),
+        ty::ty_char | ty::ty_str => Type::char(cx),
         ty::ty_int(t) => Type::int_from_ty(cx, t),
         ty::ty_uint(t) => Type::uint_from_ty(cx, t),
         ty::ty_float(t) => Type::float_from_ty(cx, t),
@@ -133,6 +133,9 @@ pub fn sizing_type_of(cx: &CrateContext, t: ty::t) -> Type {
         ty::ty_vec(ty, Some(size)) => {
             Type::array(&sizing_type_of(cx, ty), size as u64)
         }
+        ty::ty_vec(ty, None) => {
+            sizing_type_of(cx, ty)
+        }
 
         ty::ty_tup(..) | ty::ty_enum(..) => {
             let repr = adt::represent_type(cx, t);
@@ -150,14 +153,10 @@ pub fn sizing_type_of(cx: &CrateContext, t: ty::t) -> Type {
             }
         }
 
-        ty::ty_vec(_, None) | ty::ty_str => {
-            cx.sess().bug(format!("unsized type {:?} in sizing_type_of()",
-                                  ty::get(t).sty).as_slice())
-        }
         ty::ty_self(_) | ty::ty_infer(..) |
         ty::ty_param(..) | ty::ty_err(..) => {
-            cx.sess().bug(format!("fictitious type {:?} in sizing_type_of()",
-                                  ty::get(t).sty).as_slice())
+            cx.sess().bug(format!("fictitious type {} in sizing_type_of()",
+                                  ppaux::ty_to_str(cx.tcx(), t)).as_slice())
         }
     };
 
@@ -197,7 +196,7 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
     let mut llty = match ty::get(t).sty {
       ty::ty_nil | ty::ty_bot => Type::nil(cx),
       ty::ty_bool => Type::bool(cx),
-      ty::ty_char => Type::char(cx),
+      ty::ty_char | ty::ty_str => Type::char(cx),
       ty::ty_int(t) => Type::int_from_ty(cx, t),
       ty::ty_uint(t) => Type::uint_from_ty(cx, t),
       ty::ty_float(t) => Type::float_from_ty(cx, t),
@@ -217,14 +216,15 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
 
       ty::ty_uniq(ty) | ty::ty_rptr(_, ty::mt{ty, ..}) => {
           match ty::get(ty).sty {
-              ty::ty_vec(ty, None) => {
-                  let p_ty = type_of(cx, ty).ptr_to();
-                  let u_ty = Type::uint_from_ty(cx, ast::TyU);
-                  Type::struct_(cx, [p_ty, u_ty], false)
-              }
               ty::ty_str => {
                   // This means we get a nicer name in the output
                   cx.tn.find_type("str_slice").unwrap()
+              }
+              _ if !ty::type_is_sized(cx.tcx(), ty) => {
+                  let p_ty = type_of(cx, ty).ptr_to();
+                  // TODO assumes the nested DST in a stuct is a vec
+                  let u_ty = Type::uint_from_ty(cx, ast::TyU);
+                  Type::struct_(cx, [p_ty, u_ty], false)
               }
               _ => type_of(cx, ty).ptr_to(),
           }
@@ -232,6 +232,9 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
 
       ty::ty_vec(ty, Some(n)) => {
           Type::array(&type_of(cx, ty), n as u64)
+      }
+      ty::ty_vec(ty, None) => {
+          type_of(cx, ty)
       }
 
       ty::ty_bare_fn(_) => {
@@ -264,12 +267,10 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
           }
       }
 
-      ty::ty_vec(_, None) => cx.sess().bug("type_of with unsized ty_vec"),
-      ty::ty_str => cx.sess().bug("type_of with unsized (bare) ty_str"),
       ty::ty_self(..) => cx.sess().unimpl("type_of with ty_self"),
       ty::ty_infer(..) => cx.sess().bug("type_of with ty_infer"),
       ty::ty_param(..) => cx.sess().bug("type_of with ty_param"),
-      ty::ty_err(..) => cx.sess().bug("type_of with ty_err")
+      ty::ty_err(..) => cx.sess().bug("type_of with ty_err"),
     };
 
     debug!("--> mapped t={} {:?} to llty={}",

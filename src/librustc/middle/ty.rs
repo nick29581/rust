@@ -213,10 +213,11 @@ pub enum AutoAdjustment {
 pub enum UnsizeKind {
     // [T, ..n] -> [T], the uint field is n.
     UnsizeLength(uint),
-    // An unsize coercion applied to the tail field of a struct
-    UnsizeStruct(Box<UnsizeKind>),
-    UnsizeVtable, // Hopefully this will replace AutoObject; needs params
-    UnisizeNone   // For virtual struct pointers
+    // An unsize coercion applied to the tail field of a struct.
+    // The uint is the index of the type parameter which is unsized.
+    UnsizeStruct(Box<UnsizeKind>, uint),
+    UnsizeVtable, // Hopefully this will replace AutoObject; needs params.
+    UnisizeNone   // For virtual struct pointers.
 }
 
 #[deriving(Clone, Decodable, Encodable)]
@@ -227,14 +228,10 @@ pub struct AutoDerefRef {
 
 #[deriving(Clone, Decodable, Encodable, Eq, Show)]
 pub enum AutoRef {
-    /// Convert from T or ~T to &T
-    /// Value or thin pointer to thin pointer
+    /// Convert from T or ~T to &T or ~[T]/&[T] to &[T]
+    /// Value or thin pointer to thin pointer or fat pointer to fat pointer
     /// The third field allows us to wrap other AutoRef adjustments.
     AutoPtr(Region, ast::Mutability, Option<Box<AutoRef>>),
-
-    /// Convert from ~[T]/&[T] to &[T] (or str).
-    /// Fat pointer to fat pointer
-    AutoBorrowVec(Region, ast::Mutability),
 
     /// Convert ~[T, ..n] or &[T, ..n] to &[T]
     /// Thin pointer to fat pointer
@@ -1643,14 +1640,10 @@ pub fn type_is_simd(cx: &ctxt, ty: t) -> bool {
 
 pub fn sequence_element_type(cx: &ctxt, ty: t) -> t {
     match get(ty).sty {
-        ty_vec(ty, Some(_)) => ty,
-        ty_ptr(mt{ty: t, ..}) | ty_rptr(_, mt{ty: t, ..}) |
-        ty_box(t) | ty_uniq(t) => match get(t).sty {
-            ty_vec(ty, _) => ty,
-            ty_str => mk_mach_uint(ast::TyU8),
-            _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}",
-                                     ty_to_str(cx, ty)).as_slice()),
-        },
+        ty_vec(ty, _) => ty,
+        ty_str => mk_mach_uint(ast::TyU8),
+        ty_ptr(mt{ty, ..}) | ty_rptr(_, mt{ty, ..}) |
+        ty_box(ty) | ty_uniq(ty) => sequence_element_type(cx, ty),
         _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}",
                                  ty_to_str(cx, ty)).as_slice()),
     }
@@ -2173,7 +2166,7 @@ pub fn type_contents(cx: &ctxt, ty: t) -> TypeContents {
                 kind_bounds_to_contents(cx,
                                         tp_def.bounds.builtin_bounds,
                                         tp_def.bounds.trait_bounds.as_slice())
-            }
+           }
 
             ty_self(def_id) => {
                 // FIXME(#4678)---self should just be a ty param
@@ -2594,20 +2587,7 @@ pub fn type_is_machine(ty: t) -> bool {
 
 // Is the type's representation size known at compile time?
 pub fn type_is_sized(cx: &ctxt, ty: ty::t) -> bool {
-    let result = type_contents(cx, ty).is_sized(cx);
-
-    // TODO remove this
-    match get(ty).sty {
-        ty_char | ty_bool => assert!(result),
-        ty_str | ty_vec(_, None) => assert!(!result),
-        _ => {}
-    }
-
-    if !result {
-        //println!("unsized type: {}", ty_to_str(cx, ty));
-    }
-
-    result
+    type_contents(cx, ty).is_sized(cx)
 }
 
 // Whether a type is enum like, that is an enum type with only nullary
@@ -2635,11 +2615,6 @@ pub fn type_is_c_like_enum(cx: &ctxt, ty: t) -> bool {
 pub fn deref(_cx: &ctxt, t: t, explicit: bool) -> Option<mt> {
     match get(t).sty {
         ty_box(ty) | ty_uniq(ty) => {
-            // TODO
-            /*match get(ty).sty {
-                ty_str | ty_vec(_, None) => return None,
-                _ => {}
-            }*/
             Some(mt {
                 ty: ty,
                 mutbl: ast::MutImmutable,
@@ -2656,17 +2631,6 @@ pub fn index(ty: t) -> Option<t> {
     match get(ty).sty {
         ty_vec(t, _) => Some(t),
         ty_str => Some(mk_u8()),
-        // TODO do we even hit these paths now?
-        ty_ptr(mt_inner) | ty_rptr(_, mt_inner) => match get(mt_inner.ty).sty {
-            ty_vec(t, _) => Some(t),
-            ty_str => Some(mk_u8()),
-            _ => None,
-        },
-        ty_box(t) | ty_uniq(t) => match get(t).sty {
-            ty_vec(t, _) => Some(t),
-            ty_str => Some(mk_u8()),
-            _ => None,
-        },
         _ => None
     }
 }
@@ -2953,10 +2917,6 @@ pub fn adjust_ty(cx: &ctxt,
                 })
             }
 
-            AutoBorrowVec(r, m) => {
-                borrow_vec(cx, span, r, m, ty)
-            }
-
             AutoUnsafe(m) => {
                 mk_ptr(cx, mt {ty: ty, mutbl: m})
             }
@@ -2965,39 +2925,38 @@ pub fn adjust_ty(cx: &ctxt,
                 borrow_obj(cx, span, r, m, ty)
             }
 
-            AutoUnsize(r, m, _) => unsize_ref_vec(cx, span, r, m, ty),
-            AutoUnsizeUniq(_) => unsize_uniq_vec(cx, span, ty),
+            AutoUnsize(r, m, UnsizeLength(_)) => unsize_ref_vec(cx, span, r, m, ty),
+            AutoUnsize(r, m, UnsizeStruct(box ref k, i)) => unsize_struct(cx, span, r, m, ty, i, k),
+            AutoUnsizeUniq(UnsizeLength(_)) => unsize_uniq_vec(cx, span, ty),
             AutoUnsizeRef(r, m, UnsizeLength(_)) => {
                 ty::mk_rptr(cx, r, mt { ty: unsize_ref_vec(cx, span, r, m, ty),
                                         mutbl: ast::MutImmutable })
             }
-            AutoUnsizeRef(..) => cx.sess.span_bug(span, "Unsupported DST auto-borrow"),
+            _ => cx.sess.span_bug(span, "Unsupported autoref"),
         }
     }
 
-    fn borrow_vec(cx: &ctxt,
-                  span: Span,
-                  r: Region,
-                  m: ast::Mutability,
-                  ty: ty::t) -> ty::t {
+    fn unsize_struct(cx: &ctxt,
+                     span: Span,
+                     r: Region,
+                     m: ast::Mutability,
+                     ty: ty::t,
+                     tp_index: uint,
+                     kind: &UnsizeKind) -> ty::t {
         match get(ty).sty {
-            //ty_uniq(t) | ty_ptr(mt{ty: t, ..}) |
-            //ty_rptr(_, mt{ty: t, ..}) => match get(t).sty {
-                ty::ty_vec(t, None) => ty::mk_slice(cx, r, ty::mt {ty: t, mutbl: m}),
-                ty::ty_str => ty::mk_str_slice(cx, r, m),
-                /*_ => {
-                    cx.sess.span_bug(
-                        span,
-                        format!("borrow_vec associated with bad sty: {}",
-                                get(ty).sty).as_slice());
-                }*/
-            //},
-
-            ref s => {
-                cx.sess.span_bug(
-                    span,
-                    format!("borrow_vec associated with bad sty: {:?}", s).as_slice());
+            ty_struct(did, ref substs) => {
+                let old_ty = substs.tps.get(tp_index);
+                let new_ty = match kind {
+                    &UnsizeLength(_) => unsize_ref_vec(cx, span, r, m, *old_ty),
+                    &UnsizeStruct(box ref k, i) => unsize_struct(cx, span, r, m, *old_ty, i, k),
+                    _ => fail!("TODO")
+                };
+                let mut unsized_substs = substs.clone();
+                *unsized_substs.tps.get_mut(tp_index) = new_ty;
+                ty::mk_struct(cx, did, unsized_substs)
             }
+            ref s => cx.sess.span_bug(span,
+                                      format!("unsize_struct with bad sty: {:?}", s).as_slice())
         }
     }
 
@@ -3061,7 +3020,6 @@ impl AutoRef {
         match *self {
             ty::AutoPtr(r, m, None) => ty::AutoPtr(f(r), m, None),
             ty::AutoPtr(r, m, Some(ref a)) => ty::AutoPtr(f(r), m, Some(box a.map_region(f))),
-            ty::AutoBorrowVec(r, m) => ty::AutoBorrowVec(f(r), m),
             ty::AutoUnsize(r, m, ref k) => ty::AutoUnsize(f(r), m, k.clone()),
             ty::AutoUnsizeUniq(ref k) => ty::AutoUnsizeUniq(k.clone()),
             ty::AutoUnsizeRef(r, m, ref k) => ty::AutoUnsizeRef(f(r), m, k.clone()),

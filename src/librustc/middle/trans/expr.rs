@@ -61,7 +61,7 @@ use middle::trans::tvec;
 use middle::trans::type_of;
 use middle::ty::struct_fields;
 use middle::ty::{AutoBorrowObj, AutoDerefRef, AutoAddEnv, AutoObject, AutoUnsafe};
-use middle::ty::{AutoPtr, AutoBorrowVec};
+use middle::ty::{AutoPtr};
 use middle::ty;
 use middle::typeck::MethodCall;
 use util::common::indenter;
@@ -194,7 +194,17 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                 }
                 _ => {
                     if adj.autoderefs > 0 {
-                        datum = unpack_datum!(bcx, deref_once(bcx, expr, datum, adj.autoderefs));
+                        // TODO(nrc)
+                        // We should only be deref'ing a fat pointer for indexing
+                        // (here) or for immediate re-ref'ing (above). In both cases
+                        // we just don't bother and pass deal with the fat pointer.
+                        // This is a hack. The proper solution is to have a representation
+                        // for the deref'ed fat pointer and pass that. We have to
+                        // make the auto-ref stuff all work properly with that
+                        // setup.
+                        if !ty::type_is_fat_ptr(bcx.tcx(), datum.ty) {
+                            datum = unpack_datum!(bcx, deref_once(bcx, expr, datum, adj.autoderefs));
+                        }
                     }
                 }
             }
@@ -220,19 +230,22 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
         let mut datum = datum;
 
         let datum = match autoref {
-            &AutoBorrowVec(..) => {
-                // Theoretically nothing to do, but the old value is going to
-                // get deleted - I'm not really sure why, but I guess because
-                // there is cleanup scheduled somewhere. Would be nice if we
-                // could forget about that cleanup.
-                unpack_datum!(bcx, copy_fat_ptr(bcx, expr, datum))
-            }
             &AutoUnsafe(..) |
             &AutoPtr(_, _, None) => {
-                if derefs > 0 {
-                    datum = unpack_datum!(bcx, deref_once(bcx, expr, datum, derefs));
+                if ty::type_is_fat_ptr(bcx.tcx(), datum.ty) {
+                    // TODO bogus?
+                    //assert!(derefs == 1);
+                    // Theoretically nothing to do, but the old value is going to
+                    // get deleted - I'm not really sure why, but I guess because
+                    // there is cleanup scheduled somewhere. Would be nice if we
+                    // could forget about that cleanup.
+                    unpack_datum!(bcx, copy_fat_ptr(bcx, expr, datum))
+                } else {
+                    if derefs > 0 {
+                        datum = unpack_datum!(bcx, deref_once(bcx, expr, datum, derefs));
+                    }
+                    unpack_datum!(bcx, auto_ref(bcx, datum, expr))
                 }
-                unpack_datum!(bcx, auto_ref(bcx, datum, expr))
             }
             &AutoPtr(_, _, Some(box ref a)) => {
                 datum = unpack_datum!(bcx, apply_autoref(a, bcx, expr, datum, derefs));
@@ -1589,15 +1602,18 @@ pub enum cast_kind {
     cast_other,
 }
 
-pub fn cast_type_kind(t: ty::t) -> cast_kind {
+pub fn cast_type_kind(tcx: &ty::ctxt, t: ty::t) -> cast_kind {
     match ty::get(t).sty {
         ty::ty_char        => cast_integral,
         ty::ty_float(..)   => cast_float,
         ty::ty_ptr(..)     => cast_pointer,
-        ty::ty_rptr(_, mt) => match ty::get(mt.ty).sty{
-            ty::ty_vec(_, None) | ty::ty_str => cast_other,
-            _ => cast_pointer,
-        },
+        ty::ty_rptr(_, mt) => {
+            if ty::type_is_sized(tcx, mt.ty) {
+                cast_pointer
+            } else {
+                cast_other
+            }
+        }
         ty::ty_bare_fn(..) => cast_pointer,
         ty::ty_int(..)     => cast_integral,
         ty::ty_uint(..)    => cast_integral,
@@ -1617,8 +1633,8 @@ fn trans_imm_cast<'a>(bcx: &'a Block<'a>,
 
     let t_in = expr_ty(bcx, expr);
     let t_out = node_id_type(bcx, id);
-    let k_in = cast_type_kind(t_in);
-    let k_out = cast_type_kind(t_out);
+    let k_in = cast_type_kind(bcx.tcx(), t_in);
+    let k_out = cast_type_kind(bcx.tcx(), t_out);
     let s_in = k_in == cast_integral && ty::type_is_signed(t_in);
     let ll_t_in = type_of::type_of(ccx, t_in);
     let ll_t_out = type_of::type_of(ccx, t_out);
@@ -1810,11 +1826,11 @@ fn deref_once<'a>(bcx: &'a Block<'a>,
 
     let r = match ty::get(datum.ty).sty {
         ty::ty_uniq(content_ty) => {
-            match ty::get(content_ty).sty {
-                // TODO change to unsized
-                ty::ty_vec(_, None) | ty::ty_str
-                    => bcx.tcx().sess.span_bug(expr.span, "unexpected ~[T]"),
-                _ => deref_owned_pointer(bcx, expr, datum, content_ty),
+            if ty::type_is_sized(bcx.tcx(), content_ty) {
+                deref_owned_pointer(bcx, expr, datum, content_ty)
+            } else {
+                bcx.tcx().sess.span_bug(expr.span, format!("unexpected DST: {}",
+                                                           bcx.ty_to_str(datum.ty)).as_slice())
             }
         }
 
@@ -1829,22 +1845,20 @@ fn deref_once<'a>(bcx: &'a Block<'a>,
 
         ty::ty_ptr(ty::mt { ty: content_ty, .. }) |
         ty::ty_rptr(_, ty::mt { ty: content_ty, .. }) => {
-            match ty::get(content_ty).sty {
-                // TODO change to unsized
-                ty::ty_vec(_, None) | ty::ty_str
-                    => bcx.tcx().sess.span_bug(expr.span, format!("unexpected: {}", ::util::ppaux::ty_to_str(bcx.tcx(), datum.ty)).as_slice()),
-                _ => {
-                    assert!(!ty::type_needs_drop(bcx.tcx(), datum.ty));
+            if ty::type_is_sized(bcx.tcx(), content_ty) {
+                assert!(!ty::type_needs_drop(bcx.tcx(), datum.ty));
 
-                    let ptr = datum.to_llscalarish(bcx);
+                let ptr = datum.to_llscalarish(bcx);
 
-                    // Always generate an lvalue datum, even if datum.mode is
-                    // an rvalue.  This is because datum.mode is only an
-                    // rvalue for non-owning pointers like &T or *T, in which
-                    // case cleanup *is* scheduled elsewhere, by the true
-                    // owner (or, in the case of *T, by the user).
-                    DatumBlock(bcx, Datum(ptr, content_ty, LvalueExpr))
-                }
+                // Always generate an lvalue datum, even if datum.mode is
+                // an rvalue.  This is because datum.mode is only an
+                // rvalue for non-owning pointers like &T or *T, in which
+                // case cleanup *is* scheduled elsewhere, by the true
+                // owner (or, in the case of *T, by the user).
+                DatumBlock(bcx, Datum(ptr, content_ty, LvalueExpr))
+            } else {
+                bcx.tcx().sess.span_bug(expr.span, format!("unexpected DST: {}",
+                                                           bcx.ty_to_str(datum.ty)).as_slice())
             }
         }
 
