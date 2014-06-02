@@ -355,6 +355,9 @@ pub fn super_fold_sty<T:TypeFolder>(this: &mut T,
         ty::ty_vec(typ, sz) => {
             ty::ty_vec(typ.fold_with(this), sz)
         }
+        ty::ty_open(typ) => {
+            ty::ty_open(typ.fold_with(this))
+        }
         ty::ty_enum(tid, ref substs) => {
             ty::ty_enum(tid, substs.fold_with(this))
         }

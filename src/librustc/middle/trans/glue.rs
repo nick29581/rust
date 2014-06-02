@@ -118,6 +118,11 @@ pub fn drop_ty<'a>(bcx: &'a Block<'a>, v: ValueRef, t: ty::t)
                -> &'a Block<'a> {
     // NB: v is an *alias* of type t here, not a direct value.
     let _icx = push_ctxt("drop_ty");
+    // TODO hack
+    match ty::get(t).sty {
+        ty::ty_open(_) => return bcx,
+        _ => {}
+    }
     if ty::type_needs_drop(bcx.tcx(), t) {
         let ccx = bcx.ccx();
         let glue = get_drop_glue(ccx, t);

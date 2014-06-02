@@ -248,8 +248,8 @@ fn represent_type_uncached(cx: &CrateContext, t: ty::t) -> Repr {
                 mk_struct(cx, discr.append(c.tys.as_slice()).as_slice(), false)
             }).collect())
         }
-        _ => cx.sess().bug("adt::represent_type called on non-ADT type: {}",
-                           ty_to_str(cx.tcx(), t))
+        _ => cx.sess().bug(format!("adt::represent_type called on non-ADT type: {}",
+                           ty_to_str(cx.tcx(), t)).as_slice())
     }
 }
 

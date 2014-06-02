@@ -359,10 +359,7 @@ pub fn ast_ty_to_prim_ty(tcx: &ty::ctxt, ast_ty: &ast::Ty) -> Option<ty::t> {
                             Some(ty::mk_mach_float(ft))
                         }
                         ast::TyStr => {
-                            tcx.sess.span_err(ast_ty.span,
-                                              "bare `str` is not a type");
-                            // return /something/ so they can at least get more errors
-                            Some(ty::mk_uniq(tcx, ty::mk_str(tcx)))
+                            Some(ty::mk_str(tcx))
                         }
                     }
                 }

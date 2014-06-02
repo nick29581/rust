@@ -446,29 +446,6 @@ pub fn get_fixed_base_and_len(bcx: &Block,
     (base, len)
 }
 
-pub fn get_base(bcx: &Block,
-                llval: ValueRef,
-                vec_ty: ty::t)
-                -> ValueRef {
-    let ccx = bcx.ccx();
-
-    match ty::get(vec_ty).sty {
-        ty::ty_vec(_, Some(_)) => {
-            GEPi(bcx, llval, [0u, 0u])
-        }
-        ty::ty_uniq(ty) | ty::ty_rptr(_, ty::mt{ty, ..}) => match ty::get(ty).sty {
-            ty::ty_vec(_, None) | ty::ty_str => {
-                Load(bcx, GEPi(bcx, llval, [0u, abi::slice_elt_base]))
-            }
-            ty::ty_vec(_, Some(_)) => {
-                GEPi(bcx, Load(bcx, llval), [0u, 0u])
-            }
-            _ => ccx.sess().bug("unexpected type in get_base_and_len"),
-        },
-        _ => ccx.sess().bug("unexpected type in get_base_and_len"),
-    }
-}
-
 pub fn get_base_and_len(bcx: &Block,
                         llval: ValueRef,
                         vec_ty: ty::t)
@@ -484,10 +461,17 @@ pub fn get_base_and_len(bcx: &Block,
     let ccx = bcx.ccx();
 
     match ty::get(vec_ty).sty {
-        ty::ty_vec(_, Some(n)) => {
-            let base = GEPi(bcx, llval, [0u, 0u]);
-            (base, C_uint(ccx, n))
-        }
+        ty::ty_vec(_, Some(n)) => get_fixed_base_and_len(bcx, llval, n),
+        ty::ty_open(ty) => match ty::get(ty).sty {
+            ty::ty_vec(_, None) | ty::ty_str => {
+                let base = Load(bcx, GEPi(bcx, llval, [0u, abi::slice_elt_base]));
+                let len = Load(bcx, GEPi(bcx, llval, [0u, abi::slice_elt_len]));
+                (base, len)
+            }
+            _ => fail!("TODO")
+        },
+
+        // Only used for pattern matching
         ty::ty_uniq(ty) | ty::ty_rptr(_, ty::mt{ty, ..}) => match ty::get(ty).sty {
             ty::ty_vec(_, None) | ty::ty_str => {
                 let base = Load(bcx, GEPi(bcx, llval, [0u, abi::slice_elt_base]));

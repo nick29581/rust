@@ -158,11 +158,16 @@ pub fn sizing_type_of(cx: &CrateContext, t: ty::t) -> Type {
             cx.sess().bug(format!("fictitious type {} in sizing_type_of()",
                                   ppaux::ty_to_str(cx.tcx(), t)).as_slice())
         }
+
+        ty::ty_open(_) => {
+            Type::struct_(cx, [Type::i8p(cx), Type::i8p(cx)], false)
+        }
     };
 
     cx.llsizingtypes.borrow_mut().insert(t, llsizingty);
     llsizingty
 }
+
 
 // NB: If you update this, be sure to update `sizing_type_of()` as well.
 pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
@@ -196,7 +201,7 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
     let mut llty = match ty::get(t).sty {
       ty::ty_nil | ty::ty_bot => Type::nil(cx),
       ty::ty_bool => Type::bool(cx),
-      ty::ty_char | ty::ty_str => Type::char(cx),
+      ty::ty_char => Type::char(cx),
       ty::ty_int(t) => Type::int_from_ty(cx, t),
       ty::ty_uint(t) => Type::uint_from_ty(cx, t),
       ty::ty_float(t) => Type::float_from_ty(cx, t),
@@ -216,10 +221,11 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
 
       ty::ty_uniq(ty) | ty::ty_rptr(_, ty::mt{ty, ..}) => {
           match ty::get(ty).sty {
-              ty::ty_str => {
+              // TODO
+              /*ty::ty_str => {
                   // This means we get a nicer name in the output
                   cx.tn.find_type("str_slice").unwrap()
-              }
+              }*/
               _ if !ty::type_is_sized(cx.tcx(), ty) => {
                   let p_ty = type_of(cx, ty).ptr_to();
                   // TODO assumes the nested DST in a stuct is a vec
@@ -236,6 +242,7 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
       ty::ty_vec(ty, None) => {
           type_of(cx, ty)
       }
+      ty::ty_str => Type::i8(cx),
 
       ty::ty_bare_fn(_) => {
           type_of_fn_from_ty(cx, t).ptr_to()
@@ -266,6 +273,27 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
               adt::incomplete_type_of(cx, &*repr, name.as_slice())
           }
       }
+
+      ty::ty_open(t) => match ty::get(t).sty {
+          ty::ty_struct(..) => {
+              // TODO cut
+              println!("unsized struct: {}", ::util::ppaux::ty_to_str(cx.tcx(), t));
+              let s_ty = type_of(cx, t);
+              let u_ty = Type::uint_from_ty(cx, ast::TyU);
+              Type::struct_(cx, [s_ty.ptr_to(), u_ty], false)
+          }
+          ty::ty_vec(ty, None) => {
+              let p_ty = type_of(cx, ty).ptr_to();
+              let u_ty = Type::uint_from_ty(cx, ast::TyU);
+              Type::struct_(cx, [p_ty, u_ty], false)
+          }
+          ty::ty_str => {
+              let p_ty = Type::i8p(cx);
+              let u_ty = Type::uint_from_ty(cx, ast::TyU);
+              Type::struct_(cx, [p_ty, u_ty], false)
+          }
+          _ => cx.sess().bug("ty_open with sized type")
+      },
 
       ty::ty_self(..) => cx.sess().unimpl("type_of with ty_self"),
       ty::ty_infer(..) => cx.sess().bug("type_of with ty_infer"),

@@ -18,7 +18,7 @@ use middle::ty::{ReFree, ReScope, ReInfer, ReStatic, Region,
 use middle::ty::{ty_bool, ty_char, ty_bot, ty_box, ty_struct, ty_enum};
 use middle::ty::{ty_err, ty_str, ty_vec, ty_float, ty_bare_fn, ty_closure};
 use middle::ty::{ty_nil, ty_param, ty_ptr, ty_rptr, ty_self, ty_tup};
-use middle::ty::{ty_uniq, ty_trait, ty_int, ty_uint, ty_infer};
+use middle::ty::{ty_uniq, ty_trait, ty_int, ty_uint, ty_infer, ty_open};
 use middle::ty;
 use middle::typeck;
 
@@ -368,6 +368,7 @@ pub fn ty_to_str(cx: &ctxt, typ: t) -> StrBuf {
           buf.push_str(mt_to_str(cx, tm).as_slice());
           buf
       }
+      ty_open(typ) => format_strbuf!("opened<{}>", ty_to_str(cx, typ)),
       ty_tup(ref elems) => {
         let strs: Vec<StrBuf> = elems.iter().map(|elem| ty_to_str(cx, *elem)).collect();
         format_strbuf!("({})", strs.connect(","))

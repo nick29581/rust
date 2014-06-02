@@ -282,6 +282,9 @@ fn enc_sty(w: &mut MemWriter, cx: &ctxt, st: &ty::sty) {
             enc_substs(w, cx, substs);
             mywrite!(w, "]");
         }
+        ty::ty_open(_) => {
+            cx.diag.handler().bug("cannot encode opened DST types");
+        }
         ty::ty_err => fail!("shouldn't encode error type")
     }
 }

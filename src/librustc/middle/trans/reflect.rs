@@ -365,6 +365,8 @@ impl<'a, 'b> Reflector<'a, 'b> {
           }
           ty::ty_self(..) => self.leaf("self"),
           ty::ty_str | ty::ty_vec(_, None) => fail!("should have been caught by unsized check"),
+          // TODO better message
+          ty::ty_open(_) => fail!("Should not be around still")
         }
     }
 

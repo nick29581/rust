@@ -212,6 +212,7 @@ pub enum AutoAdjustment {
 #[deriving(Clone, Decodable, Encodable, Eq, Show)]
 pub enum UnsizeKind {
     // [T, ..n] -> [T], the uint field is n.
+    // TODO I don't think we ever use the length, remove it
     UnsizeLength(uint),
     // An unsize coercion applied to the tail field of a struct.
     // The uint is the index of the type parameter which is unsized.
@@ -233,6 +234,8 @@ pub enum AutoRef {
     /// The third field allows us to wrap other AutoRef adjustments.
     AutoPtr(Region, ast::Mutability, Option<Box<AutoRef>>),
 
+    // TODO is there any difference between AutoUnsize and AutoUnsizeRef now?
+    // I think non-ref just does a deref first
     /// Convert ~[T, ..n] or &[T, ..n] to &[T]
     /// Thin pointer to fat pointer
     AutoUnsize(Region, ast::Mutability, UnsizeKind),
@@ -767,7 +770,10 @@ pub enum sty {
 
     ty_param(param_ty), // type parameter
     ty_self(DefId), /* special, implicit `self` type parameter;
-                      * def_id is the id of the trait */
+                     * def_id is the id of the trait */
+
+    ty_open(t),  // A deref'ed fat pointer, i.e., a dynamically sized value
+                 // and its size.
 
     ty_infer(InferTy), // something used only during inference/typeck
     ty_err, // Also only used during inference/typeck, to represent
@@ -1236,7 +1242,7 @@ pub fn mk_t(cx: &ctxt, st: sty) -> t {
               _ => {}
           }
       }
-      &ty_box(tt) | &ty_uniq(tt) | &ty_vec(tt, _) => {
+      &ty_box(tt) | &ty_uniq(tt) | &ty_vec(tt, _) | &ty_open(tt) => {
         flags |= get(tt).flags
       }
       &ty_ptr(ref m) => {
@@ -1497,6 +1503,8 @@ pub fn mk_param(cx: &ctxt, n: uint, k: DefId) -> t {
     mk_t(cx, ty_param(param_ty { idx: n, def_id: k }))
 }
 
+pub fn mk_open(cx: &ctxt, t: t) -> t { mk_t(cx, ty_open(t)) }
+
 pub fn walk_ty(ty: t, f: |t|) {
     maybe_walk_ty(ty, |t| { f(t); true });
 }
@@ -1509,7 +1517,7 @@ pub fn maybe_walk_ty(ty: t, f: |t| -> bool) {
         ty_nil | ty_bot | ty_bool | ty_char | ty_int(_) | ty_uint(_) | ty_float(_) |
         ty_str | ty_self(_) |
         ty_infer(_) | ty_param(_) | ty_err => {}
-        ty_box(ty) | ty_uniq(ty) | ty_vec(ty, _) => maybe_walk_ty(ty, f),
+        ty_box(ty) | ty_uniq(ty) | ty_vec(ty, _) | ty_open(ty) => maybe_walk_ty(ty, f),
         ty_ptr(ref tm) | ty_rptr(_, ref tm) => {
             maybe_walk_ty(tm.ty, f);
         }
@@ -1643,7 +1651,7 @@ pub fn sequence_element_type(cx: &ctxt, ty: t) -> t {
         ty_vec(ty, _) => ty,
         ty_str => mk_mach_uint(ast::TyU8),
         ty_ptr(mt{ty, ..}) | ty_rptr(_, mt{ty, ..}) |
-        ty_box(ty) | ty_uniq(ty) => sequence_element_type(cx, ty),
+        ty_box(ty) | ty_uniq(ty) | ty_open(ty) => sequence_element_type(cx, ty),
         _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}",
                                  ty_to_str(cx, ty)).as_slice()),
     }
@@ -2184,6 +2192,12 @@ pub fn type_contents(cx: &ctxt, ty: t) -> TypeContents {
                 TC::All
             }
 
+            ty_open(t) => {
+                let result = tc_ty(cx, t, cache);
+                assert!(!result.is_sized(cx))
+                result
+            }
+
             ty_err => {
                 cx.sess.bug("asked to compute contents of error type");
             }
@@ -2361,7 +2375,7 @@ pub fn is_instantiable(cx: &ctxt, r_ty: t) -> bool {
             ty_vec(_, None) => {
                 false
             }
-            ty_box(typ) | ty_uniq(typ) => {
+            ty_box(typ) | ty_uniq(typ) | ty_open(typ) => {
                 type_requires(cx, seen, r_ty, typ)
             }
             ty_rptr(_, ref mt) => {
@@ -2626,6 +2640,14 @@ pub fn deref(_cx: &ctxt, t: t, explicit: bool) -> Option<mt> {
     }
 }
 
+pub fn close_type(cx: &ctxt, t: t) -> t {
+    match get(t).sty {
+        ty_open(t) => mk_rptr(cx, ReStatic, mt {ty: t, mutbl:ast::MutImmutable}),
+        _ => cx.sess.bug(format!("Trying to close a non-open type {}",
+                                 ty_to_str(cx, t)).as_slice())
+    }
+}
+
 // Returns the type of t[i]
 pub fn index(ty: t) -> Option<t> {
     match get(ty).sty {
@@ -2825,6 +2847,36 @@ pub fn local_var_name_str(cx: &ctxt, id: NodeId) -> InternedString {
                                 id,
                                 r).as_slice());
         }
+    }
+}
+
+// Take a sized type and a sizing adjustment and produce an unsized version of
+// the type.
+// TODO replace unsize_vec/struct with this
+pub fn unsize_ty(cx: &ctxt,
+                 ty: ty::t,
+                 kind: &UnsizeKind,
+                 span: Span)
+                 -> ty::t {
+    match kind {
+        &UnsizeLength(len) => match get(ty).sty {
+            ty_vec(t, Some(n)) => {
+                assert!(len == n);
+                mk_vec(cx, t, None)
+            }
+            _ => fail!("TODO")
+        },
+        &UnsizeStruct(box ref k, tp_index) => match get(ty).sty {
+            ty_struct(did, ref substs) => {
+                let old_ty = substs.tps.get(tp_index);
+                let new_ty = unsize_ty(cx, *old_ty, k, span);
+                let mut unsized_substs = substs.clone();
+                *unsized_substs.tps.get_mut(tp_index) = new_ty;
+                mk_struct(cx, did, unsized_substs)
+            }
+            _ => fail!("TODO")
+        },
+        _ => fail!("TODO")
     }
 }
 
@@ -3308,6 +3360,7 @@ pub fn ty_sort_str(cx: &ctxt, t: t) -> StrBuf {
         ty_infer(IntVar(_)) => "integral variable".to_strbuf(),
         ty_infer(FloatVar(_)) => "floating-point variable".to_strbuf(),
         ty_param(_) => "type parameter".to_strbuf(),
+        ty_open(_) => "opened DST".to_strbuf(),
         ty_self(_) => "self".to_strbuf(),
         ty_err => "type error".to_strbuf(),
     }
@@ -4663,6 +4716,7 @@ pub fn hash_crate_independent(tcx: &ctxt, t: t, svh: &Svh) -> u64 {
                 byte!(21);
                 did(&mut state, d);
             }
+            ty_open(_) => byte!(22),
             ty_infer(_) => unreachable!(),
             ty_err => byte!(23),
         }
