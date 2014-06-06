@@ -1331,14 +1331,16 @@ impl<'a, T> Iterator<&'a mut [T]> for MutSplits<'a, T> {
         match self.v.iter().position(|x| (*pred)(x)) {
             None => {
                 self.finished = true;
-                let tmp = mem::replace(&mut self.v, &mut []);
+                let src: &mut [T] = &mut [];
+                let tmp = mem::replace(&mut self.v, src);
                 let len = tmp.len();
                 let (head, tail) = tmp.mut_split_at(len);
                 self.v = tail;
                 Some(head)
             }
             Some(idx) => {
-                let tmp = mem::replace(&mut self.v, &mut []);
+                let src: &mut [T] = &mut [];
+                let tmp = mem::replace(&mut self.v, src);
                 let (head, tail) = tmp.mut_split_at(idx);
                 self.v = tail.mut_slice_from(1);
                 Some(head)
@@ -1367,11 +1369,13 @@ impl<'a, T> DoubleEndedIterator<&'a mut [T]> for MutSplits<'a, T> {
         match self.v.iter().rposition(|x| (*pred)(x)) {
             None => {
                 self.finished = true;
-                let tmp = mem::replace(&mut self.v, &mut []);
+                let src: &mut [T] = &mut [];
+                let tmp = mem::replace(&mut self.v, src);
                 Some(tmp)
             }
             Some(idx) => {
-                let tmp = mem::replace(&mut self.v, &mut []);
+                let src: &mut [T] = &mut [];
+                let tmp = mem::replace(&mut self.v, src);
                 let (head, tail) = tmp.mut_split_at(idx);
                 self.v = head;
                 Some(tail.mut_slice_from(1))
@@ -1395,7 +1399,8 @@ impl<'a, T> Iterator<&'a mut [T]> for MutChunks<'a, T> {
             None
         } else {
             let sz = cmp::min(self.v.len(), self.chunk_size);
-            let tmp = mem::replace(&mut self.v, &mut []);
+            let src: &mut [T] = &mut [];
+            let tmp = mem::replace(&mut self.v, src);
             let (head, tail) = tmp.mut_split_at(sz);
             self.v = tail;
             Some(head)
@@ -1422,7 +1427,8 @@ impl<'a, T> DoubleEndedIterator<&'a mut [T]> for MutChunks<'a, T> {
         } else {
             let remainder = self.v.len() % self.chunk_size;
             let sz = if remainder != 0 { remainder } else { self.chunk_size };
-            let tmp = mem::replace(&mut self.v, &mut []);
+            let src: &mut [T] = &mut [];
+            let tmp = mem::replace(&mut self.v, src);
             let tmp_len = tmp.len();
             let (head, tail) = tmp.mut_split_at(tmp_len - sz);
             self.v = head;

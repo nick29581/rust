@@ -994,7 +994,7 @@ fn extract_vec_elems<'a>(
     let vec_datum = match_datum(bcx, val, pat_id);
     let (base, len) = vec_datum.get_vec_base_and_len(bcx);
     let vec_ty = node_id_type(bcx, pat_id);
-    let vt = tvec::vec_types(bcx, ty::sequence_element_type(bcx.tcx(), vec_ty));
+    let vt = tvec::vec_types(bcx, ty::sequence_element_type(bcx.tcx(), ty::type_content(vec_ty)));
 
     let mut elems = Vec::from_fn(elem_count, |i| {
         match slice {

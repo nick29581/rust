@@ -466,7 +466,7 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
           ast::ExprAssign(..) | ast::ExprAssignOp(..) |
           ast::ExprFnBlock(..) | ast::ExprProc(..) | ast::ExprRet(..) |
           ast::ExprUnary(..) |
-          ast::ExprMethodCall(..) | ast::ExprCast(..) | ast::ExprVstore(..) |
+          ast::ExprMethodCall(..) | ast::ExprCast(..) |
           ast::ExprVec(..) | ast::ExprTup(..) | ast::ExprIf(..) |
           ast::ExprBinary(..) | ast::ExprWhile(..) |
           ast::ExprBlock(..) | ast::ExprLoop(..) | ast::ExprMatch(..) |
@@ -655,7 +655,13 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
                            -> cmt {
         match self.typer.temporary_scope(id) {
             Some(scope) => {
-                self.cat_rvalue(id, span, ty::ReScope(scope), expr_ty)
+                match ty::get(expr_ty).sty {
+                    ty::ty_vec(_, Some(0)) => self.cat_rvalue(id, span, ty::ReStatic, expr_ty),
+                    _ => {
+                        debug!("nrc: {}; {}", ::util::ppaux::ty_to_str(self.tcx(), expr_ty), scope)
+                        self.cat_rvalue(id, span, ty::ReScope(scope), expr_ty)
+                    }
+                }
             }
             None => {
                 self.cat_rvalue(id, span, ty::ReStatic, expr_ty)

@@ -83,8 +83,8 @@ fn sub_expr() {
 
 fn move_iter() {
     // Test move_iter (correct values and no drop glue crash)
-    let x = box [1, 2, 3, 4];
-    let xi: Vec<int> = x.move_iter().collect();
+    let x: Box<[uint]> = box [1, 2, 3, 4];
+    let xi: Vec<uint> = x.move_iter().collect();
     assert!(xi.get(0) == &1);
     assert!(xi.get(1) == &2);
     assert!(xi.get(2) == &3);

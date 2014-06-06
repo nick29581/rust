@@ -486,7 +486,7 @@ fn visit_expr(ir: &mut IrMaps, expr: &Expr) {
       }
 
       // otherwise, live nodes are not required:
-      ExprIndex(..) | ExprField(..) | ExprVstore(..) | ExprVec(..) |
+      ExprIndex(..) | ExprField(..) | ExprVec(..) |
       ExprCall(..) | ExprMethodCall(..) | ExprTup(..) |
       ExprBinary(..) | ExprAddrOf(..) |
       ExprCast(..) | ExprUnary(..) | ExprBreak(_) |
@@ -1085,10 +1085,6 @@ impl<'a> Liveness<'a> {
 
           // Uninteresting cases: just propagate in rev exec order
 
-          ExprVstore(ref expr, _) => {
-            self.propagate_through_expr(&**expr, succ)
-          }
-
           ExprVec(ref exprs) => {
             self.propagate_through_exprs(exprs.as_slice(), succ)
           }
@@ -1405,8 +1401,7 @@ fn check_expr(this: &mut Liveness, expr: &Expr) {
       // no correctness conditions related to liveness
       ExprCall(..) | ExprMethodCall(..) | ExprIf(..) | ExprMatch(..) |
       ExprWhile(..) | ExprLoop(..) | ExprIndex(..) | ExprField(..) |
-      ExprVstore(..) | ExprVec(..) | ExprTup(..) |
-      ExprBinary(..) |
+      ExprVec(..) | ExprTup(..) | ExprBinary(..) |
       ExprCast(..) | ExprUnary(..) | ExprRet(..) | ExprBreak(..) |
       ExprAgain(..) | ExprLit(_) | ExprBlock(..) |
       ExprMac(..) | ExprAddrOf(..) | ExprStruct(..) | ExprRepeat(..) |

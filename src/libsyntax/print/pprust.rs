@@ -1179,16 +1179,6 @@ impl<'a> State<'a> {
         }
     }
 
-    pub fn print_expr_vstore(&mut self, t: ast::ExprVstore) -> IoResult<()> {
-        match t {
-            ast::ExprVstoreUniq => word(&mut self.s, "box "),
-            ast::ExprVstoreSlice => word(&mut self.s, "&"),
-            ast::ExprVstoreMutSlice => {
-                try!(word(&mut self.s, "&"));
-                word(&mut self.s, "mut")
-            }
-        }
-    }
 
     fn print_call_post(&mut self, args: &[Gc<ast::Expr>]) -> IoResult<()> {
         try!(self.popen());
@@ -1213,10 +1203,6 @@ impl<'a> State<'a> {
         try!(self.ibox(indent_unit));
         try!(self.ann.pre(self, NodeExpr(expr)));
         match expr.node {
-            ast::ExprVstore(ref e, v) => {
-                try!(self.print_expr_vstore(v));
-                try!(self.print_expr(&**e));
-            },
             ast::ExprBox(ref p, ref e) => {
                 try!(word(&mut self.s, "box"));
                 try!(word(&mut self.s, "("));
