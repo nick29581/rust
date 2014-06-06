@@ -1488,18 +1488,8 @@ enum Allocation {
 }
 
 fn check_unnecessary_allocation(cx: &Context, e: &ast::Expr) {
-    // Warn if string and vector literals with sigils, or boxing expressions,
-    // are immediately borrowed.
+    // Warn if boxing expressions are immediately borrowed.
     let allocation = match e.node {
-        ast::ExprVstore(e2, ast::ExprVstoreUniq) => {
-            match e2.node {
-                ast::ExprLit(lit) if ast_util::lit_is_str(lit) => {
-                    VectorAllocation
-                }
-                ast::ExprVec(..) => VectorAllocation,
-                _ => return
-            }
-        }
         ast::ExprUnary(ast::UnUniq, _) |
         ast::ExprUnary(ast::UnBox, _) => BoxAllocation,
 

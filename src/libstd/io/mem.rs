@@ -94,7 +94,8 @@ impl Writer for MemWriter {
         let (left, right) = if cap <= buf.len() {
             (buf.slice_to(cap), buf.slice_from(cap))
         } else {
-            (buf, &[])
+            let result: (&[u8], &[u8]) = (buf, &[]);
+            result
         };
 
         // Do the necessary writes

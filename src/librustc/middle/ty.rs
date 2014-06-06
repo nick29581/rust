@@ -1608,8 +1608,11 @@ pub fn sequence_element_type(cx: &ctxt, ty: t) -> t {
     match get(ty).sty {
         ty_vec(ty, _) => ty,
         ty_str => mk_mach_uint(ast::TyU8),
-        ty_ptr(mt{ty, ..}) | ty_rptr(_, mt{ty, ..}) |
-        ty_box(ty) | ty_uniq(ty) | ty_open(ty) => sequence_element_type(cx, ty),
+        // TODO remove
+        //ty_ptr(mt{ty, ..}) | ty_rptr(_, mt{ty, ..}) |
+        //ty_box(ty) | ty_uniq(ty) |
+        // TODO does this make sense? WHo is the caller?
+        ty_open(ty) => sequence_element_type(cx, ty),
         _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}",
                                  ty_to_str(cx, ty)).as_slice()),
     }
@@ -2607,6 +2610,15 @@ pub fn close_type(cx: &ctxt, t: t) -> t {
     }
 }
 
+pub fn type_content(t: t) -> t {
+    match get(t).sty {
+        ty_box(ty) | ty_uniq(ty) => ty,
+        ty_rptr(_, mt) |ty_ptr(mt) => mt.ty,
+        _ => t
+    }
+
+}
+
 // Extract the unsized type in an open type (or just return t if it is not open).
 pub fn unopen_type(t: t) -> t {
     match get(t).sty {
@@ -3130,8 +3142,6 @@ pub fn expr_kind(tcx: &ctxt, expr: &ast::Expr) -> ExprKind {
         ast::ExprProc(..) |
         ast::ExprBlock(..) |
         ast::ExprRepeat(..) |
-        ast::ExprVstore(_, ast::ExprVstoreSlice) |
-        ast::ExprVstore(_, ast::ExprVstoreMutSlice) |
         ast::ExprVec(..) => {
             RvalueDpsExpr
         }
@@ -3182,8 +3192,7 @@ pub fn expr_kind(tcx: &ctxt, expr: &ast::Expr) -> ExprKind {
         ast::ExprLit(_) | // Note: LitStr is carved out above
         ast::ExprUnary(..) |
         ast::ExprAddrOf(..) |
-        ast::ExprBinary(..) |
-        ast::ExprVstore(_, ast::ExprVstoreUniq) => {
+        ast::ExprBinary(..) => {
             RvalueDatumExpr
         }
 

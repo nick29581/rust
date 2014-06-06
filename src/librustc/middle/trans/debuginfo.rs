@@ -3338,7 +3338,6 @@ fn populate_scope_map(cx: &CrateContext,
             ast::ExprAgain(_) |
             ast::ExprPath(_)  => {}
 
-            ast::ExprVstore(ref sub_exp, _)   |
             ast::ExprCast(ref sub_exp, _)     |
             ast::ExprAddrOf(_, ref sub_exp)  |
             ast::ExprField(ref sub_exp, _, _) |

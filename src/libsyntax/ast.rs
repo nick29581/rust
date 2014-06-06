@@ -316,13 +316,6 @@ pub enum Mutability {
 }
 
 #[deriving(Clone, PartialEq, Eq, Encodable, Decodable, Hash)]
-pub enum ExprVstore {
-    ExprVstoreUniq,                 // ~[1,2,3,4]
-    ExprVstoreSlice,                // &[1,2,3,4]
-    ExprVstoreMutSlice,             // &mut [1,2,3,4]
-}
-
-#[deriving(Clone, PartialEq, Eq, Encodable, Decodable, Hash)]
 pub enum BinOp {
     BiAdd,
     BiSub,
@@ -439,7 +432,6 @@ pub struct Expr {
 
 #[deriving(Clone, PartialEq, Eq, Encodable, Decodable, Hash)]
 pub enum Expr_ {
-    ExprVstore(Gc<Expr>, ExprVstore),
     // First expr is the place; second expr is the value.
     ExprBox(Gc<Expr>, Gc<Expr>),
     ExprVec(Vec<Gc<Expr>>),

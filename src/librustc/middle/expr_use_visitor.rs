@@ -391,10 +391,6 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                 self.walk_captures(expr)
             }
 
-            ast::ExprVstore(ref base, _) => {
-                self.consume_expr(&**base);
-            }
-
             ast::ExprBox(ref place, ref base) => {
                 self.consume_expr(&**place);
                 self.consume_expr(&**base);

@@ -192,9 +192,17 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
             datum = unpack_datum!(bcx, add_env(bcx, expr, datum));
         }
         AutoDerefRef(ref adj) => {
-            if adj.autoderefs > 0 {
+            // Extracting a value from a box counts as a deref, but if we are
+            // just converting Box<[T, ..n]> to Box<[T]> we aren't really doing
+            // a deref (and wouldn't if we could treat Box like a normal struct).
+            let autoderefs = match adj.autoref {
+                Some(ty::AutoUnsizeUniq(..)) => adj.autoderefs - 1,
+                _ => adj.autoderefs
+            };
+
+            if autoderefs > 0 {
                 datum = unpack_datum!(
-                    bcx, deref_multiple(bcx, expr, datum, adj.autoderefs));
+                    bcx, deref_multiple(bcx, expr, datum, autoderefs));
             }
 
             match adj.autoref {
@@ -251,7 +259,7 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
 
             &ty::AutoUnsizeUniq(ty::UnsizeLength(len)) => {
                 debug!("AutoUnsizeUniq");
-                unpack_datum!(bcx, unsize_unique(bcx, datum, len))
+                unpack_datum!(bcx, unsize_unique(bcx, expr, datum, len))
             }
             &AutoBorrowObj(..) => {
                 debug!("AutoBorrowObj");
@@ -344,7 +352,7 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
         let base = base(bcx, lval.val);
         let len = len(bcx, lval.val);
 
-        let scratch = rvalue_scratch_datum(bcx, dest_ty, "__adjust");
+        let scratch = rvalue_scratch_datum(bcx, dest_ty, "__fat_ptr");
         Store(bcx, base, get_dataptr(bcx, scratch.val));
         Store(bcx, len, get_len(bcx, scratch.val));
 
@@ -352,16 +360,22 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
     }
 
     fn unsize_unique<'a>(bcx: &'a Block<'a>,
+                         expr: &ast::Expr,
                          datum: Datum<Expr>,
                          len: uint)
                          -> DatumBlock<'a, Expr> {
         let mut bcx = bcx;
         let tcx = bcx.tcx();
 
+        let datum_ty = datum.ty;
+        // Arrange cleanup
+        let lval = unpack_datum!(bcx,
+                                 datum.to_lvalue_datum(bcx, "unsize_unique", expr.id));
+
         let ll_len = C_uint(bcx.ccx(), len);
-        let unit_ty = ty::sequence_element_type(tcx, datum.ty);
+        let unit_ty = ty::sequence_element_type(tcx, ty::type_content(datum_ty));
         let vec_ty = ty::mk_uniq(tcx, ty::mk_vec(tcx, unit_ty, None));
-        let scratch = rvalue_scratch_datum(bcx, vec_ty, "__adjust");
+        let scratch = rvalue_scratch_datum(bcx, vec_ty, "__unsize_unique");
 
         if len == 0 {
             Store(bcx,
@@ -380,10 +394,10 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                 Store(bcx, alloc_result.val, base);
             } else {
                 let base = get_dataptr(bcx, scratch.val);
-                let base = PointerCast(bcx, base,
-                                       type_of::type_of(bcx.ccx(), datum.ty).ptr_to());
-                bcx = datum.store_to(bcx, base);
-
+                let base = PointerCast(bcx,
+                                       base,
+                                       type_of::type_of(bcx.ccx(), datum_ty).ptr_to());
+                bcx = lval.store_to(bcx, base);
             }
         }
 
@@ -524,26 +538,31 @@ fn trans_datum_unadjusted<'a>(bcx: &'a Block<'a>,
         ast::ExprIndex(base, idx) => {
             trans_index(bcx, expr.span, &**base, &**idx)
         }
-        ast::ExprVstore(ref contents, ast::ExprVstoreUniq) => {
-            fcx.push_ast_cleanup_scope(contents.id);
-            let datum = unpack_datum!(
-                bcx, tvec::trans_uniq_vstore(bcx, expr, &**contents));
-            bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, contents.id);
-            DatumBlock::new(bcx, datum)
-        }
         ast::ExprBox(_, ref contents) => {
             // Special case for `Box<T>` and `Gc<T>`
-            let box_ty = expr_ty(bcx, expr);
-            let contents_ty = expr_ty(bcx, &**contents);
-            match ty::get(box_ty).sty {
-                ty::ty_uniq(..) => {
-                    trans_uniq_expr(bcx, box_ty, &**contents, contents_ty)
+            match contents.node {
+                /*ast::ExprLit(lit) if ast_util::lit_is_str(lit) => {
+                    //TODO code dup
+                    // Special case for owned vectors.
+                    fcx.push_ast_cleanup_scope(contents.id);
+                    let datum = unpack_datum!(
+                        bcx, tvec::trans_uniq_vec(bcx, expr, contents));
+                    bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, contents.id);
+                    DatumBlock(bcx, datum)
+                }*/
+                ast::ExprRepeat(..) | ast::ExprVec(..) => {
+                    // Special case for owned vectors.
+                    fcx.push_ast_cleanup_scope(contents.id);
+                    let datum = unpack_datum!(
+                        bcx, tvec::trans_uniq_vec(bcx, expr, contents));
+                    bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, contents.id);
+                    DatumBlock(bcx, datum)
                 }
-                ty::ty_box(..) => {
-                    trans_managed_expr(bcx, box_ty, &**contents, contents_ty)
+                _ => {
+                    let box_ty = expr_ty(bcx, expr);
+                    let contents_ty = expr_ty(bcx, contents);
+                    trans_uniq_expr(bcx, box_ty, contents, contents_ty)
                 }
-                _ => bcx.sess().span_bug(expr.span,
-                                         "expected unique or managed box")
             }
         }
         ast::ExprLit(ref lit) => trans_immediate_lit(bcx, expr, (**lit).clone()),
@@ -554,7 +573,28 @@ fn trans_datum_unadjusted<'a>(bcx: &'a Block<'a>,
             trans_unary(bcx, expr, op, &**x)
         }
         ast::ExprAddrOf(_, ref x) => {
-            trans_addr_of(bcx, expr, &**x)
+            match x.node {
+                // TODO er, ugly?
+                /*ast::ExprLit(lit) if ast_util::lit_is_str(lit) => {
+                    // Special case for strs.
+                    fcx.push_ast_cleanup_scope(x.id);
+                    let datum = unpack_datum!(
+                        bcx, tvec::trans_slice_vec(bcx, x, x));
+                    bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, x.id);
+                    DatumBlock(bcx, datum)
+                }*/
+                ast::ExprRepeat(..) | ast::ExprVec(..) => {
+                    // Special case for slices.
+                    fcx.push_ast_cleanup_scope(x.id);
+                    let datum = unpack_datum!(
+                        bcx, tvec::trans_slice_vec(bcx, expr, &**x));
+                    bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, x.id);
+                    DatumBlock(bcx, datum)
+                }
+                _ => {
+                    trans_addr_of(bcx, expr, &**x)
+                }
+            }
         }
         ast::ExprCast(ref val, _) => {
             // Datum output mode means this is a scalar cast:
@@ -637,6 +677,7 @@ fn trans_index<'a>(bcx: &'a Block<'a>,
     let vt = tvec::vec_types(bcx, ty::sequence_element_type(bcx.tcx(), base_datum.ty));
     base::maybe_name_value(bcx.ccx(), vt.llunit_size, "unit_sz");
 
+    debug!("nrc type: {}", bcx.ty_to_str(base_datum.ty));
     let (base, len) = base_datum.get_vec_base_and_len(bcx);
 
     debug!("trans_index: base {}", bcx.val_to_str(base));
@@ -804,7 +845,6 @@ fn trans_rvalue_dps_unadjusted<'a>(bcx: &'a Block<'a>,
     let _icx = push_ctxt("trans_rvalue_dps_unadjusted");
     let mut bcx = bcx;
     let tcx = bcx.tcx();
-    let fcx = bcx.fcx;
 
     match expr.node {
         ast::ExprParen(ref e) => {
@@ -850,14 +890,8 @@ fn trans_rvalue_dps_unadjusted<'a>(bcx: &'a Block<'a>,
                 }
             }
         }
-        ast::ExprVstore(ref contents, ast::ExprVstoreSlice) |
-        ast::ExprVstore(ref contents, ast::ExprVstoreMutSlice) => {
-            fcx.push_ast_cleanup_scope(contents.id);
-            bcx = tvec::trans_slice_vstore(bcx, expr, &**contents, dest);
-            fcx.pop_and_trans_ast_cleanup_scope(bcx, contents.id)
-        }
         ast::ExprVec(..) | ast::ExprRepeat(..) => {
-            tvec::trans_fixed_vstore(bcx, expr, expr, dest)
+            tvec::trans_fixed_vstore(bcx, expr, dest)
         }
         ast::ExprFnBlock(ref decl, ref body) |
         ast::ExprProc(ref decl, ref body) => {

@@ -94,8 +94,7 @@ impl VecTypes {
 
 pub fn trans_fixed_vstore<'a>(
                           bcx: &'a Block<'a>,
-                          vstore_expr: &ast::Expr,
-                          content_expr: &ast::Expr,
+                          expr: &ast::Expr,
                           dest: expr::Dest)
                           -> &'a Block<'a> {
     //!
@@ -105,30 +104,30 @@ pub fn trans_fixed_vstore<'a>(
     // to store the array of the suitable size, so all we have to do is
     // generate the content.
 
-    debug!("trans_fixed_vstore(vstore_expr={}, dest={:?})",
-           bcx.expr_to_str(vstore_expr), dest.to_str(bcx.ccx()));
+    debug!("trans_fixed_vstore(expr={}, dest={:?})",
+           bcx.expr_to_str(expr), dest.to_str(bcx.ccx()));
 
-    let vt = vec_types_from_expr(bcx, vstore_expr);
+    let vt = vec_types_from_expr(bcx, expr);
 
     return match dest {
-        Ignore => write_content(bcx, &vt, vstore_expr, content_expr, dest),
+        Ignore => write_content(bcx, &vt, expr, expr, dest),
         SaveIn(lldest) => {
             // lldest will have type *[T x N], but we want the type *T,
             // so use GEP to convert:
             let lldest = GEPi(bcx, lldest, [0, 0]);
-            write_content(bcx, &vt, vstore_expr, content_expr, SaveIn(lldest))
+            write_content(bcx, &vt, expr, expr, SaveIn(lldest))
         }
     };
 }
 
-pub fn trans_slice_vstore<'a>(bcx: &'a Block<'a>,
-                              vstore_expr: &ast::Expr,
-                              content_expr: &ast::Expr,
-                              dest: expr::Dest)
-                              -> &'a Block<'a> {
+pub fn trans_slice_vec<'a>(bcx: &'a Block<'a>,
+                           slice_expr: &ast::Expr,
+                           content_expr: &ast::Expr)
+                           -> DatumBlock<'a, Expr> {
+    // TODO comment is wrong
     /*!
      * &[...] allocates memory on the stack and writes the values into it,
-     * returning a slice (pair of ptr, len).  &"..." is similar except that
+     * returning a slice (pair of ptr, len).  "..." is similar except that
      * the memory can be statically allocated.
      */
 
@@ -136,18 +135,22 @@ pub fn trans_slice_vstore<'a>(bcx: &'a Block<'a>,
     let ccx = fcx.ccx;
     let mut bcx = bcx;
 
-    debug!("trans_slice_vstore(vstore_expr={}, dest={})",
-           bcx.expr_to_str(vstore_expr), dest.to_str(ccx));
+    debug!("trans_slice_vec(slice_expr={})",
+           bcx.expr_to_str(slice_expr));
 
-    // Handle the &"..." case:
+    let vec_ty = node_id_type(bcx, slice_expr.id);
+
+    // Handle the "..." case (returns a slice since strings are always unsized):
     match content_expr.node {
         ast::ExprLit(lit) => {
             match lit.node {
                 ast::LitStr(ref s, _) => {
-                    return trans_lit_str(bcx,
-                                         content_expr,
-                                         s.clone(),
-                                         dest)
+                    let scratch = rvalue_scratch_datum(bcx, vec_ty, "");
+                    bcx = trans_lit_str(bcx,
+                                        content_expr,
+                                        s.clone(),
+                                        SaveIn(scratch.val));
+                    return DatumBlock(bcx, scratch.to_expr_datum());
                 }
                 _ => {}
             }
@@ -156,44 +159,36 @@ pub fn trans_slice_vstore<'a>(bcx: &'a Block<'a>,
     }
 
     // Handle the &[...] case:
-    let vt = vec_types_from_expr(bcx, vstore_expr);
+    let vt = vec_types_from_expr(bcx, content_expr);
     let count = elements_required(bcx, content_expr);
     debug!("    vt={}, count={:?}", vt.to_str(ccx), count);
     let llcount = C_uint(ccx, count);
 
+    let fixed_ty = ty::mk_vec(bcx.tcx(),
+                              vt.unit_ty,
+                              Some(count));
+    let llfixed_ty = type_of::type_of(bcx.ccx(), fixed_ty).ptr_to();
+
     let llfixed = if count == 0 {
         // Zero-length array: just use NULL as the data pointer
-        C_null(vt.llunit_ty.ptr_to())
+        C_null(llfixed_ty)
     } else {
         // Make a fixed-length backing array and allocate it on the stack.
         let llfixed = base::arrayalloca(bcx, vt.llunit_ty, llcount);
 
         // Arrange for the backing array to be cleaned up.
-        let fixed_ty = ty::mk_vec(bcx.tcx(),
-                                  vt.unit_ty,
-                                  Some(count));
-        let llfixed_ty = type_of::type_of(bcx.ccx(), fixed_ty).ptr_to();
         let llfixed_casted = BitCast(bcx, llfixed, llfixed_ty);
         let cleanup_scope = cleanup::temporary_scope(bcx.tcx(), content_expr.id);
         fcx.schedule_drop_mem(cleanup_scope, llfixed_casted, fixed_ty);
 
         // Generate the content into the backing array.
-        bcx = write_content(bcx, &vt, vstore_expr,
+        bcx = write_content(bcx, &vt, slice_expr,
                             content_expr, SaveIn(llfixed));
 
-        llfixed
+        llfixed_casted
     };
 
-    // Finally, create the slice pair itself.
-    match dest {
-        Ignore => {}
-        SaveIn(lldest) => {
-            Store(bcx, llfixed, GEPi(bcx, lldest, [0u, abi::slice_elt_base]));
-            Store(bcx, llcount, GEPi(bcx, lldest, [0u, abi::slice_elt_len]));
-        }
-    }
-
-    return bcx;
+    immediate_rvalue_bcx(bcx, llfixed, vec_ty).to_expr_datumblock()
 }
 
 pub fn trans_lit_str<'a>(
@@ -208,9 +203,8 @@ pub fn trans_lit_str<'a>(
      * the content anywhere.
      */
 
-    debug!("trans_lit_str(lit_expr={}, dest={})",
-           bcx.expr_to_str(lit_expr),
-           dest.to_str(bcx.ccx()));
+    debug!("trans_lit_str(lit_expr={})",
+           bcx.expr_to_str(lit_expr));
 
     match dest {
         Ignore => bcx,
@@ -228,24 +222,24 @@ pub fn trans_lit_str<'a>(
     }
 }
 
-pub fn trans_uniq_vstore<'a>(bcx: &'a Block<'a>,
-                             vstore_expr: &ast::Expr,
-                             content_expr: &ast::Expr)
-                             -> DatumBlock<'a, Expr> {
+pub fn trans_uniq_vec<'a>(bcx: &'a Block<'a>,
+                          uniq_expr: &ast::Expr,
+                          content_expr: &ast::Expr)
+                          -> DatumBlock<'a, Expr> {
     /*!
      * ~[...] and "...".to_string() allocate boxes in the exchange heap and write
      * the array elements into them.
      */
 
-    debug!("trans_uniq_vstore(vstore_expr={})", bcx.expr_to_str(vstore_expr));
+    debug!("trans_uniq_vec(vstore_expr={})", bcx.expr_to_str(uniq_expr));
     let fcx = bcx.fcx;
     let ccx = fcx.ccx;
 
-    let vt = vec_types_from_expr(bcx, vstore_expr);
+    let vt = vec_types_from_expr(bcx, content_expr);
     let count = elements_required(bcx, content_expr);
     debug!("    vt={}, count={:?}", vt.to_str(ccx), count);
     let llcount = C_uint(ccx, count);
-    let vec_ty = node_id_type(bcx, vstore_expr.id);
+    let vec_ty = node_id_type(bcx, uniq_expr.id);
 
     let (bcx, dataptr) = if count == 0 {
         // Zero-length array: just use NULL as the data pointer
@@ -272,7 +266,7 @@ pub fn trans_uniq_vstore<'a>(bcx: &'a Block<'a>,
             debug!("    alloc_uniq_vec() returned dataptr={}, len={}",
                    bcx.val_to_str(dataptr), count);
 
-            let bcx = write_content(bcx, &vt, vstore_expr,
+            let bcx = write_content(bcx, &vt, uniq_expr,
                                     content_expr, SaveIn(dataptr));
 
         fcx.pop_custom_cleanup_scope(temp_scope);
@@ -280,10 +274,14 @@ pub fn trans_uniq_vstore<'a>(bcx: &'a Block<'a>,
         (bcx, dataptr)
     };
 
-    let scratch = rvalue_scratch_datum(bcx, vec_ty, "");
-    Store(bcx, dataptr, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
-    Store(bcx, llcount, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
-    DatumBlock(bcx, scratch.to_expr_datum())
+    if ty::type_is_sized(bcx.tcx(), vec_ty) {
+        immediate_rvalue_bcx(bcx, dataptr, vec_ty).to_expr_datumblock()
+    } else {
+        let scratch = rvalue_scratch_datum(bcx, vec_ty, "");
+        Store(bcx, dataptr, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
+        Store(bcx, llcount, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
+        DatumBlock(bcx, scratch.to_expr_datum())
+    }
 }
 
 pub fn write_content<'a>(

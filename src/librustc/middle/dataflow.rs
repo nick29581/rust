@@ -595,7 +595,6 @@ impl<'a, 'b, O:DataFlowOperator> PropagationContext<'a, 'b, O> {
             ast::ExprCast(ref e, _) |
             ast::ExprUnary(_, ref e) |
             ast::ExprParen(ref e) |
-            ast::ExprVstore(ref e, _) |
             ast::ExprField(ref e, _, _) => {
                 self.walk_expr(&**e, in_out, loop_scopes);
             }

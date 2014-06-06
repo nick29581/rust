@@ -10,8 +10,7 @@
 
 
 use back::abi;
-use lib::llvm::{llvm, ConstFCmp, ConstICmp, SetLinkage, PrivateLinkage, ValueRef, Bool, True,
-    False};
+use lib::llvm::{llvm, ConstFCmp, ConstICmp, SetLinkage, PrivateLinkage, ValueRef, Bool, True};
 use lib::llvm::{IntEQ, IntNE, IntUGT, IntUGE, IntULT, IntULE, IntSGT, IntSGE, IntSLT, IntSLE,
     RealOEQ, RealOGT, RealOGE, RealOLT, RealOLE, RealONE};
 
@@ -140,7 +139,6 @@ fn const_deref(cx: &CrateContext, v: ValueRef, t: ty::t, explicit: bool)
     -> (ValueRef, ty::t) {
     match ty::deref(t, explicit) {
         Some(ref mt) => {
-            assert!(mt.mutbl != ast::MutMutable);
             let dv = match ty::get(t).sty {
                 ty::ty_ptr(mt) | ty::ty_rptr(_, mt) => {
                     if ty::type_is_sized(cx.tcx(), mt.ty) {
@@ -152,6 +150,7 @@ fn const_deref(cx: &CrateContext, v: ValueRef, t: ty::t, explicit: bool)
                     }
                 }
                 ty::ty_enum(..) | ty::ty_struct(..) => {
+                    assert!(mt.mutbl != ast::MutMutable);
                     const_deref_newtype(cx, v, t)
                 }
                 _ => {
@@ -238,8 +237,6 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                             match *autoref {
                                 ty::AutoUnsafe(m) |
                                 ty::AutoPtr(ty::ReStatic, m, None) => {
-                                    assert!(m != ast::MutMutable);
-
                                     // Don't copy data to do a deref+ref
                                     // (i.e., skip the last auto-deref).
                                     if adj.autoderefs == 0 {
@@ -248,12 +245,13 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                                     }
                                 }
                                 ty::AutoPtr(ty::ReStatic, m, Some(box ty::AutoUnsize(..))) => {
-                                    // If there were autoderefs, we would have to do
-                                    // the last one here, but that should not happen.
-                                    assert!(adj.autoderefs == 0);
-                                    assert!(m != ast::MutMutable);
+                                    if adj.autoderefs > 0 {
+                                        let (dv, dt) = const_deref(cx, llconst, ty, false);
+                                        llconst = dv;
+                                        ty = dt;
+                                    }
 
-                                    match ty::get(ety).sty {
+                                    match ty::get(ty).sty {
                                         ty::ty_vec(_, Some(len)) => {
                                             inlineable = false;
                                             let llptr = const_addr_of(cx, llconst);
@@ -265,8 +263,8 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                                             ], false);
                                         }
                                         _ => cx.sess().span_bug(e.span,
-                                            format!("unimplemented type in const unsize {}",
-                                                    ty_to_str(cx.tcx(), ety)).as_slice())
+                                            format!("unimplemented type in const unsize: {}",
+                                                    ty_to_str(cx.tcx(), ty)).as_slice())
                                     }
                                 }
                                 _ => {
@@ -534,7 +532,7 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
               }
             }, inlineable)
           }
-          ast::ExprAddrOf(ast::MutImmutable, ref sub) => {
+          ast::ExprAddrOf(_, ref sub) => {
               let (e, _) = const_expr(cx, &**sub, is_local);
               (const_addr_of(cx, e), false)
           }
@@ -582,8 +580,8 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
             (v, inlineable)
           }
           // TODO do we even need ast::ExprVstore ?
-          ast::ExprVstore(ref sub, store @ ast::ExprVstoreSlice) |
-          ast::ExprVstore(ref sub, store @ ast::ExprVstoreMutSlice) => {
+          /*ast::ExprVstore(sub, store @ ast::ExprVstoreSlice) |
+          ast::ExprVstore(sub, store @ ast::ExprVstoreMutSlice) => {
             match sub.node {
               ast::ExprLit(ref lit) => {
                 match lit.node {
@@ -611,8 +609,8 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
               }
               _ => cx.sess().span_bug(e.span, "bad const-slice expr")
             }
-          }
-          ast::ExprRepeat(ref elem, ref count) => {
+          }*/
+          ast::ExprRepeat(ref elem, refcount) => {
             let vec_ty = ty::expr_ty(cx.tcx(), e);
             let unit_ty = ty::sequence_element_type(cx.tcx(), vec_ty);
             let llunitty = type_of::type_of(cx, unit_ty);

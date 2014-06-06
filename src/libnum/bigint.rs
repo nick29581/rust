@@ -140,7 +140,11 @@ impl BitAnd<BigUint, BigUint> for BigUint {
 impl BitOr<BigUint, BigUint> for BigUint {
     fn bitor(&self, other: &BigUint) -> BigUint {
         let zeros = ZERO_VEC.iter().cycle();
-        let (a, b) = if self.data.len() > other.data.len() { (self, other) } else { (other, self) };
+        let (a, b) = if self.data.len() > other.data.len() {
+            (self, other)
+        } else {
+            (other, self)
+        };
         let ored = a.data.iter().zip(b.data.iter().chain(zeros)).map(
             |(ai, bi)| *ai | *bi
         ).collect();
@@ -151,7 +155,7 @@ impl BitOr<BigUint, BigUint> for BigUint {
 impl BitXor<BigUint, BigUint> for BigUint {
     fn bitxor(&self, other: &BigUint) -> BigUint {
         let zeros = ZERO_VEC.iter().cycle();
-        let (a, b) = if self.data.len() > other.data.len() { (self, other) } else { (other, self) };
+        let (a, b) = if self.data.len() > other.data.len() {(self, other)} else {(other, self)};
         let xored = a.data.iter().zip(b.data.iter().chain(zeros)).map(
             |(ai, bi)| *ai ^ *bi
         ).collect();
@@ -195,7 +199,11 @@ impl Unsigned for BigUint {}
 impl Add<BigUint, BigUint> for BigUint {
     fn add(&self, other: &BigUint) -> BigUint {
         let zeros = ZERO_VEC.iter().cycle();
-        let (a, b) = if self.data.len() > other.data.len() { (self, other) } else { (other, self) };
+        let (a, b) = if self.data.len() > other.data.len() {
+            (self, other)
+        } else {
+            (other, self)
+        };
 
         let mut carry = 0;
         let mut sum: Vec<BigDigit> =  a.data.iter().zip(b.data.iter().chain(zeros)).map(|(ai, bi)| {

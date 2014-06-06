@@ -430,25 +430,7 @@ pub fn ast_ty_to_builtin_ty<AC:AstConv,
                                                rscope,
                                                &mt,
                                                Uniq,
-                                               |typ| {
-                            match ty::get(typ).sty {
-                                ty::ty_str => {
-                                    this.tcx()
-                                        .sess
-                                        .span_err(path.span,
-                                                  "`Box<str>` is not a type");
-                                    ty::mk_err()
-                                }
-                                ty::ty_vec(_, None) => {
-                                    this.tcx()
-                                        .sess
-                                        .span_err(path.span,
-                                                  "`Box<[T]>` is not a type");
-                                    ty::mk_err()
-                                }
-                                _ => ty::mk_uniq(this.tcx(), typ),
-                            }
-                        }))
+                                               |typ| ty::mk_uniq(this.tcx(), typ)));
                     }
                     this.tcx().sess.span_err(path.span,
                                              "not enough type parameters \

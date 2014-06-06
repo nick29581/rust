@@ -422,7 +422,6 @@ impl<'a> CFGBuilder<'a> {
             ast::ExprCast(e, _) |
             ast::ExprUnary(_, e) |
             ast::ExprParen(e) |
-            ast::ExprVstore(e, _) |
             ast::ExprField(e, _, _) => {
                 self.straightline(expr, pred, [e])
             }
