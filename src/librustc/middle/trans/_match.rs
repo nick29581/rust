@@ -324,8 +324,8 @@ fn trans_opt<'a>(bcx: &'a Block<'a>, o: &Opt) -> opt_result<'a> {
             return adt::trans_case(bcx, &**repr, disr_val);
         }
         range(ref l1, ref l2) => {
-            let (l1, _) = consts::const_expr(ccx, &**l1, true);
-            let (l2, _) = consts::const_expr(ccx, &**l2, true);
+            let (l1, _, _) = consts::const_expr(ccx, &**l1, true);
+            let (l2, _, _) = consts::const_expr(ccx, &**l2, true);
             return range_result(Result::new(bcx, l1), Result::new(bcx, l2));
         }
         vec_len(n, vec_len_eq, _) => {
