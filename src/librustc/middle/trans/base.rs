@@ -2025,7 +2025,7 @@ pub fn get_item_val(ccx: &CrateContext, id: ast::NodeId) -> ValueRef {
 
                     // We need the translated value here, because for enums the
                     // LLVM type is not fully determined by the Rust type.
-                    let (v, inlineable) = consts::const_expr(ccx, &**expr, is_local);
+                    let (v, inlineable, _) = consts::const_expr(ccx, &**expr, is_local);
                     ccx.const_values.borrow_mut().insert(id, v);
                     let mut inlineable = inlineable;
 

@@ -15,6 +15,5 @@ use std::task::TaskBuilder;
 fn main() {
     TaskBuilder::new().named("owned name".to_string()).try(proc() {
         fail!("test");
-        1
     }).unwrap()
 }

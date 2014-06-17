@@ -677,7 +677,6 @@ fn trans_index<'a>(bcx: &'a Block<'a>,
     let vt = tvec::vec_types(bcx, ty::sequence_element_type(bcx.tcx(), base_datum.ty));
     base::maybe_name_value(bcx.ccx(), vt.llunit_size, "unit_sz");
 
-    debug!("nrc type: {}", bcx.ty_to_str(base_datum.ty));
     let (base, len) = base_datum.get_vec_base_and_len(bcx);
 
     debug!("trans_index: base {}", bcx.val_to_str(base));

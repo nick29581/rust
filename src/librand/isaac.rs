@@ -465,7 +465,7 @@ mod test {
 
     #[test]
     fn test_rng_32_seeded() {
-        let seed = &[1, 23, 456, 7890, 12345];
+        let seed: &[_] = &[1, 23, 456, 7890, 12345];
         let mut ra: IsaacRng = SeedableRng::from_seed(seed);
         let mut rb: IsaacRng = SeedableRng::from_seed(seed);
         assert!(order::equals(ra.gen_ascii_chars().take(100),
@@ -473,7 +473,7 @@ mod test {
     }
     #[test]
     fn test_rng_64_seeded() {
-        let seed = &[1, 23, 456, 7890, 12345];
+        let seed: &[_] = &[1, 23, 456, 7890, 12345];
         let mut ra: Isaac64Rng = SeedableRng::from_seed(seed);
         let mut rb: Isaac64Rng = SeedableRng::from_seed(seed);
         assert!(order::equals(ra.gen_ascii_chars().take(100),
@@ -505,7 +505,7 @@ mod test {
 
     #[test]
     fn test_rng_32_true_values() {
-        let seed = &[1, 23, 456, 7890, 12345];
+        let seed: &[_] = &[1, 23, 456, 7890, 12345];
         let mut ra: IsaacRng = SeedableRng::from_seed(seed);
         // Regression test that isaac is actually using the above vector
         let v = Vec::from_fn(10, |_| ra.next_u32());
@@ -513,7 +513,7 @@ mod test {
                    vec!(2558573138, 873787463, 263499565, 2103644246, 3595684709,
                         4203127393, 264982119, 2765226902, 2737944514, 3900253796));
 
-        let seed = &[12345, 67890, 54321, 9876];
+        let seed: &[_] = &[12345, 67890, 54321, 9876];
         let mut rb: IsaacRng = SeedableRng::from_seed(seed);
         // skip forward to the 10000th number
         for _ in range(0, 10000) { rb.next_u32(); }
@@ -525,7 +525,7 @@ mod test {
     }
     #[test]
     fn test_rng_64_true_values() {
-        let seed = &[1, 23, 456, 7890, 12345];
+        let seed: &[_] = &[1, 23, 456, 7890, 12345];
         let mut ra: Isaac64Rng = SeedableRng::from_seed(seed);
         // Regression test that isaac is actually using the above vector
         let v = Vec::from_fn(10, |_| ra.next_u64());
@@ -535,7 +535,7 @@ mod test {
                         4469761996653280935, 15552757044682284409, 6860251611068737823,
                         13722198873481261842));
 
-        let seed = &[12345, 67890, 54321, 9876];
+        let seed: &[_] = &[12345, 67890, 54321, 9876];
         let mut rb: Isaac64Rng = SeedableRng::from_seed(seed);
         // skip forward to the 10000th number
         for _ in range(0, 10000) { rb.next_u64(); }

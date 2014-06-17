@@ -2676,7 +2676,8 @@ mod tests {
 
     #[test]
     fn test_all() {
-        let v: Box<&[int]> = box &[1, 2, 3, 4, 5];
+        let v: &[int] = &[1, 2, 3, 4, 5];
+        let v = box v;
         assert!(v.iter().all(|&x| x < 10));
         assert!(!v.iter().all(|&x| x % 2 == 0));
         assert!(!v.iter().all(|&x| x > 100));
@@ -2685,7 +2686,8 @@ mod tests {
 
     #[test]
     fn test_any() {
-        let v: Box<&[int]> = box &[1, 2, 3, 4, 5];
+        let v: &[int] = &[1, 2, 3, 4, 5];
+        let v = box v;
         assert!(v.iter().any(|&x| x < 10));
         assert!(v.iter().any(|&x| x % 2 == 0));
         assert!(!v.iter().any(|&x| x > 100));

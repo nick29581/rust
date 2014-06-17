@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn test_vectors() {
-        let x: Vec<int> = vec![];
+        let x = vec![];
         assert_eq!(x.to_str(), "[]".to_string());
         assert_eq!((vec![1]).to_str(), "[1]".to_string());
         assert_eq!((vec![1, 2, 3]).to_str(), "[1, 2, 3]".to_string());

@@ -649,13 +649,12 @@ mod tests {
         assert_eq!((test1).to_ascii_opt(), None);
 
         let v = [40u8, 32u8, 59u8];
-        let v2 = v2ascii!(&[40, 32, 59]);
+        let v2: &[_] = v2ascii!(&[40, 32, 59]);
         assert_eq!(v.to_ascii_opt(), Some(v2));
         let v = [127u8, 128u8, 255u8];
         assert_eq!(v.to_ascii_opt(), None);
 
         let v = "( ;";
-        let v2 = v2ascii!(&[40, 32, 59]);
         assert_eq!(v.to_ascii_opt(), Some(v2));
         assert_eq!("zoä华".to_ascii_opt(), None);
 
