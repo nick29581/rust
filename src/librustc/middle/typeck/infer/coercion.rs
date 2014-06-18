@@ -234,8 +234,8 @@ impl<'f> Coerce<'f> {
         }
     }
 
-    pub fn unpack_actual_value(&self, a: ty::t, f: |&ty::sty| -> CoerceResult)
-                               -> CoerceResult {
+    pub fn unpack_actual_value<T>(&self, a: ty::t, f: |&ty::sty| -> T)
+                               -> T {
         match resolve_type(self.get_ref().infcx, a, try_resolve_tvar_shallow) {
             Ok(t) => {
                 f(&ty::get(t).sty)
@@ -244,7 +244,7 @@ impl<'f> Coerce<'f> {
                 self.get_ref().infcx.tcx.sess.span_bug(
                     self.get_ref().trace.origin.span(),
                     format!("failed to resolve even without \
-                          any force options: {:?}", e).as_slice());
+                             any force options: {:?}", e).as_slice());
             }
         }
     }
@@ -350,6 +350,8 @@ impl<'f> Coerce<'f> {
                                                  r_borrow,
                                                  ty::mt{ty: ty, mutbl: mt_b.mutbl});
                             if_ok!(self.get_ref().infcx.try(|| sub.tys(ty, b)));
+                            debug!("Success, coerced with AutoDerefRef(1, \
+                                    AutoPtr(AutoUnsize({:?})))", kind);
                             Ok(Some(AutoDerefRef(AutoDerefRef {
                                 autoderefs: 1,
                                 autoref: Some(ty::AutoPtr(r_borrow, mt_b.mutbl,
@@ -366,6 +368,8 @@ impl<'f> Coerce<'f> {
                         Some((ty, kind)) => {
                             let ty = ty::mk_uniq(self.get_ref().infcx.tcx, ty);
                             if_ok!(self.get_ref().infcx.try(|| sub.tys(ty, b)));
+                            debug!("Success, coerced with AutoDerefRef(1, \
+                                    AutoUnsizeUniq({:?}))", kind);
                             Ok(Some(AutoDerefRef(AutoDerefRef {
                                 autoderefs: 1,
                                 autoref: Some(ty::AutoUnsizeUniq(kind))
@@ -384,6 +388,8 @@ impl<'f> Coerce<'f> {
     // E.g., `[T, ..n]` -> `([T], UnsizeLength(n))`
     fn unsize_ty(&self, sty_a: &ty::sty)
                  -> Option<(ty::t, ty::UnsizeKind)> {
+        debug!("unsize_ty(sty_a={:?}", sty_a);
+
         let tcx = self.get_ref().infcx.tcx;
         match *sty_a {
             ty::ty_vec(t_a, Some(len)) => {
@@ -397,9 +403,6 @@ impl<'f> Coerce<'f> {
                 // the last field is unsized, we have to check only that it _is_
                 // unsized).
 
-
-
-
                 // Find the type of the last field in the struct and see if we
                 // can unsize it.
                 let fields = ty::lookup_struct_fields(tcx, did);
@@ -408,53 +411,63 @@ impl<'f> Coerce<'f> {
                 }
                 let last_field = fields.get(fields.len()-1);
                 let field_ty = ty::lookup_field_type(tcx, did, last_field.id, substs);
-                match self.unsize_ty(&ty::get(field_ty).sty) {
-                    Some((field_ty, field_kind)) => {
-                        // The last field can be unsized, now we have to find a
-                        // substitution which gives us the correct field type.
-                        // We do this by trying to unsize each actual type
-                        // parameter in substs and seeing if that gets us the
-                        // right type for the last field.
-                        let mut new_substs: Option<ty::substs> = None;
-                        let mut index = 0u;
-                        for (i, tp) in substs.tps.iter().enumerate() {
-                            match self.unsize_ty(&ty::get(*tp).sty) {
-                                Some((utp, _)) => {
-                                    let mut unsized_substs = substs.clone();
-                                    *unsized_substs.tps.get_mut(i) = utp;
-                                    let subst_field_ty = ty::lookup_field_type(tcx,
-                                                                               did,
-                                                                               last_field.id,
-                                                                               &unsized_substs);
-                                    if ty::get(subst_field_ty).sty == ty::get(field_ty).sty {
-                                        new_substs = Some(unsized_substs);
-                                        index = i;
-                                        break;
+
+                self.unpack_actual_value(field_ty, |field_sty|
+                    match self.unsize_ty(field_sty) {
+                        Some((field_ty, field_kind)) => {
+                            // The last field can be unsized, now we have to find a
+                            // substitution which gives us the correct field type.
+                            // We do this by trying to unsize each actual type
+                            // parameter in substs and seeing if that gets us the
+                            // right type for the last field.
+                            let mut new_substs: Option<ty::substs> = None;
+                            let mut index = 0u;
+                            for (i, tp) in substs.tps.iter().enumerate() {
+                                let should_break = self.unpack_actual_value(*tp, |tp|
+                                    match self.unsize_ty(tp) {
+                                        Some((utp, _)) => {
+                                            let mut unsized_substs = substs.clone();
+                                            *unsized_substs.tps.get_mut(i) = utp;
+                                            let subst_field_ty = ty::lookup_field_type(tcx,
+                                                                                       did,
+                                                                                       last_field.id,
+                                                                                       &unsized_substs);
+                                            if ty::get(subst_field_ty).sty == ty::get(field_ty).sty {
+                                                new_substs = Some(unsized_substs);
+                                                index = i;
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        }
+                                        None => false
                                     }
+                                );
+                                if should_break {
+                                    break;
                                 }
-                                None => {}
-                            }
-                        }
-
-                        match new_substs {
-                            Some(substs) => {
-                                let ty = ty::mk_struct(tcx, did, substs);
-                                Some((ty, ty::UnsizeStruct(box field_kind, index)))
                             }
 
-                            // This is a bit of an odd case: the last field _can_
-                            // be unsized, but there is no type parameter that
-                            // can be unsized to have that effect. In this case,
-                            // we cannot unsize the struct.
-                            // Example: struct `S { fld: [int, ..4] }`
-                            // We could unsize to S' where the type of `fld` is
-                            // `[int]`, but that would be a different struct.
-                            None => None
+                            match new_substs {
+                                Some(substs) => {
+                                    let ty = ty::mk_struct(tcx, did, substs);
+                                    Some((ty, ty::UnsizeStruct(box field_kind, index)))
+                                }
+
+                                // This is a bit of an odd case: the last field _can_
+                                // be unsized, but there is no type parameter that
+                                // can be unsized to have that effect. In this case,
+                                // we cannot unsize the struct.
+                                // Example: struct `S { fld: [int, ..4] }`
+                                // We could unsize to S' where the type of `fld` is
+                                // `[int]`, but that would be a different struct.
+                                None => None
+                            }
                         }
+                        // Can't unsize the last field's type, so no coercion to do
+                        _ => None
                     }
-                    // Can't unsize the last field's type, so no coercion to do
-                    _ => None
-                }
+                )
             }
             _ => None
         }
