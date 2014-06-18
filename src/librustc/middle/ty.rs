@@ -235,7 +235,7 @@ pub enum AutoRef {
     /// The third field allows us to wrap other AutoRef adjustments.
     AutoPtr(Region, ast::Mutability, Option<Box<AutoRef>>),
 
-    /// Convert [T, ..n] or [T, ..n] to [T]
+    /// Convert [T, ..n] to [T] (or similar, depending on the kind)
     AutoUnsize(UnsizeKind),
 
     /// Convert [T, ..n] to ~[T]

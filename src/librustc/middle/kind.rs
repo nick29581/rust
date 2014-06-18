@@ -277,7 +277,7 @@ pub fn check_expr(cx: &mut Context, e: &Expr) {
                     let target_ty = ty::expr_ty_adjusted(cx.tcx, e);
                     check_trait_cast(cx, source_ty, target_ty, e.span);
                 }
-                _ => {}
+                ty::AutoAddEnv(..) | ty::AutoDerefRef(..) => {}
             }
         }
         None => {}
