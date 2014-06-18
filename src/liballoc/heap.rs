@@ -13,6 +13,7 @@
 //                and `nonnull`
 
 #[cfg(not(test))] use core::raw;
+#[cfg(not(test))] use core::ptr::RawPtr;
 #[cfg(not(test))] use util;
 
 /// Return a pointer to `size` bytes of memory.

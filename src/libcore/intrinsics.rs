@@ -118,8 +118,6 @@ pub trait TyVisitor {
     #[cfg(not(stage0))]
     fn visit_evec_fixed(&mut self, n: uint, sz: uint, align: uint,
                         inner: *TyDesc) -> bool;
-    #[cfg(not(stage0))]
-    fn visit_evec_uniq(&mut self, inner: *TyDesc) -> bool;
 
     fn visit_enter_rec(&mut self, n_fields: uint,
                        sz: uint, align: uint) -> bool;

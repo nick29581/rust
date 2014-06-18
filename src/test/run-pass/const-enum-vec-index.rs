@@ -25,7 +25,7 @@ pub fn main() {
         V1(n) => assert!(n == 0xDEADBEE),
         _ => fail!()
     }
-    
+
     match D0 {
         V0 => (),
         _ => fail!()

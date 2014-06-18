@@ -187,20 +187,10 @@ fn decl_fn(ccx: &CrateContext, name: &str, cc: lib::llvm::CallConv,
         ty::ty_bot => {
             unsafe {
                 llvm::LLVMAddFunctionAttribute(llfn,
-                                               lib::llvm::NoReturnAttribute as c_uint,
+                                               lib::llvm::FunctionIndex as c_uint,
                                                lib::llvm::NoReturnAttribute as uint64_t)
             }
         }
-        // `~` pointer return values never alias because ownership is transferred
-        ty::ty_uniq(t)
-            => match ty::get(t).sty {
-                ty::ty_vec(_, None) | ty::ty_str | ty::ty_trait(..) => {}
-                _ => unsafe {
-                    llvm::LLVMAddReturnAttribute(llfn,
-                                                 lib::llvm::NoAliasAttribute as c_uint,
-                                                 lib::llvm::NoReturnAttribute as uint64_t);
-                }
-            },
         _ => {}
     }
 

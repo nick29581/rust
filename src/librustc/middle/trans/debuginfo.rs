@@ -361,7 +361,7 @@ impl TypeMap {
                 let inner_type_id = self.get_unique_type_id_as_string(inner_type_id);
                 unique_type_id.push_str(inner_type_id.as_slice());
             },
-            ty::ty_vec(ty::mt { ty: inner_type, .. }, optional_length) => {
+            ty::ty_vec(inner_type, optional_length) => {
                 match optional_length {
                     Some(len) => {
                         unique_type_id.push_str(format!("[{}]", len).as_slice());
@@ -540,18 +540,6 @@ impl TypeMap {
                                                .as_slice(),
                                            variant_name);
         let interner_key = self.unique_id_interner.intern(Rc::new(enum_variant_type_id));
-        UniqueTypeId(interner_key)
-    }
-
-    fn get_unique_type_id_of_heap_vec_box(&mut self,
-                                          cx: &CrateContext,
-                                          element_type: ty::t)
-                                       -> UniqueTypeId {
-        let element_type_id = self.get_unique_type_id_of_type(cx, element_type);
-        let heap_vec_box_type_id = format!("$$HEAP_VEC_BOX<{}>$$",
-                                           self.get_unique_type_id_as_string(element_type_id)
-                                               .as_slice());
-        let interner_key = self.unique_id_interner.intern(Rc::new(heap_vec_box_type_id));
         UniqueTypeId(interner_key)
     }
 
@@ -2826,7 +2814,7 @@ fn type_metadata(cx: &CrateContext,
                     false)
                 }
                 _ => {
-                    let pointee_metadata = type_metadata(cx, pointee_type, usage_site_span);
+                    let pointee_metadata = type_metadata(cx, typ, usage_site_span);
                     return_if_created_in_meantime!();
                     MetadataCreationResult::new(pointer_type_metadata(cx, t, pointee_metadata),
                                                 false)
@@ -2834,8 +2822,8 @@ fn type_metadata(cx: &CrateContext,
             }
         }
         // FIXME Can we do better than this for unsized vec/str fields?
-        ty::ty_vec(typ, None) => fixed_vec_metadata(cx, typ, 1, usage_site_span),
-        ty::ty_str => fixed_vec_metadata(cx, ty::mk_i8(), 1, usage_site_span),
+        ty::ty_vec(typ, None) => fixed_vec_metadata(cx, unique_type_id, typ, 1, usage_site_span),
+        ty::ty_str => fixed_vec_metadata(cx, unique_type_id, ty::mk_i8(), 1, usage_site_span),
         ty::ty_ptr(ref mt) | ty::ty_rptr(_, ref mt) => {
             match ty::get(mt.ty).sty {
                 ty::ty_vec(typ, None) => {
@@ -2857,7 +2845,7 @@ fn type_metadata(cx: &CrateContext,
                     false)
                 }
                 _ => {
-                    let pointee_metadata = type_metadata(cx, pointee_type, usage_site_span);
+                    let pointee_metadata = type_metadata(cx, mt.ty, usage_site_span);
                     return_if_created_in_meantime!();
                     MetadataCreationResult::new(pointer_type_metadata(cx, t, pointee_metadata),
                                                 false)

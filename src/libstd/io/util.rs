@@ -310,8 +310,7 @@ mod test {
         let mut s = ZeroReader;
         let mut buf = vec![1, 2, 3];
         assert_eq!(s.read(buf.as_mut_slice()), Ok(3));
-        let a: Box<[_]> = box [0, 0, 0];
-        assert_eq!(a, buf);
+        assert_eq!(vec![0, 0, 0], buf);
     }
 
     #[test]

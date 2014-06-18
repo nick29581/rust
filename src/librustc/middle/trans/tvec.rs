@@ -150,7 +150,7 @@ pub fn trans_slice_vec<'a>(bcx: &'a Block<'a>,
                                         content_expr,
                                         s.clone(),
                                         SaveIn(scratch.val));
-                    return DatumBlock(bcx, scratch.to_expr_datum());
+                    return DatumBlock::new(bcx, scratch.to_expr_datum());
                 }
                 _ => {}
             }
@@ -280,7 +280,7 @@ pub fn trans_uniq_vec<'a>(bcx: &'a Block<'a>,
         let scratch = rvalue_scratch_datum(bcx, vec_ty, "");
         Store(bcx, dataptr, GEPi(bcx, scratch.val, [0u, abi::slice_elt_base]));
         Store(bcx, llcount, GEPi(bcx, scratch.val, [0u, abi::slice_elt_len]));
-        DatumBlock(bcx, scratch.to_expr_datum())
+        DatumBlock::new(bcx, scratch.to_expr_datum())
     }
 }
 

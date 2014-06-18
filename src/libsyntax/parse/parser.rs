@@ -1341,7 +1341,6 @@ impl<'a> Parser<'a> {
         } else if self.token == token::TILDE {
             // OWNED POINTER
             self.bump();
-            let last_span = self.last_span;
             match self.token {
                 token::IDENT(ref ident, _)
                         if "str" == token::get_ident(*ident).get() => {

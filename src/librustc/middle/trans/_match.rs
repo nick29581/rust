@@ -1277,7 +1277,7 @@ fn compare_values<'a>(
         },
         ty::ty_rptr(_, mt) => match ty::get(mt.ty).sty {
             ty::ty_str => compare_str(cx, lhs, rhs, rhs_t),
-            ty::ty_vec(mt, _) => match ty::get(mt.ty).sty {
+            ty::ty_vec(ty, _) => match ty::get(ty).sty {
                 ty::ty_uint(ast::TyU8) => {
                     // NOTE: cast &[u8] to &str and abuse the str_eq lang item,
                     // which calls memcmp().
