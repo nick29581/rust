@@ -124,11 +124,11 @@ pub fn trans_slice_vec<'a>(bcx: &'a Block<'a>,
                            slice_expr: &ast::Expr,
                            content_expr: &ast::Expr)
                            -> DatumBlock<'a, Expr> {
-    // TODO comment is wrong
     /*!
      * &[...] allocates memory on the stack and writes the values into it,
-     * returning a slice (pair of ptr, len).  "..." is similar except that
-     * the memory can be statically allocated.
+     * returning the vector (the caller must make the reference).  "..." is
+     * similar except that the memory can be statically allocated and we return
+     * a reference (strings are always by-ref).
      */
 
     let fcx = bcx.fcx;

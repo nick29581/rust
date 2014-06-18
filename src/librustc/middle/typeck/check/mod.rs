@@ -3157,43 +3157,59 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
         }
       }
       ast::ExprVec(ref args) => {
-        // TODO can I undo any of my changes?
-        // TODO need to do this for ExprRepeat too
         let uty = unpack_expected(
             fcx, expected,
-            |sty| match *sty { ty::ty_vec(ty, _) => Some(ty),
-                               _ => None });
+            |sty| match *sty {
+                ty::ty_vec(ty, _) => Some(ty),
+                _ => None
+        });
 
-        match uty {
+        let typ = match uty {
             Some(uty) => {
                 for e in args.iter() {
                     check_expr_coercable_to_type(fcx, &**e, uty);
                 }
-                fcx.write_ty(id, ty::mk_vec(tcx, uty, Some(args.len())));
+                uty
             }
             None => {
                 let t: ty::t = fcx.infcx().next_ty_var();
                 for e in args.iter() {
                     check_expr_has_type(fcx, &**e, t);
                 }
-                let typ = ty::mk_vec(tcx, t, Some(args.len()));
-                fcx.write_ty(id, typ);
+                t
             }
-        }
+        };
+        let typ = ty::mk_vec(tcx, typ, Some(args.len()));
+        fcx.write_ty(id, typ);
       }
       ast::ExprRepeat(ref element, ref count_expr) => {
         check_expr_with_hint(fcx, &**count_expr, ty::mk_uint());
         let count = ty::eval_repeat_count(fcx, &**count_expr);
-        let t: ty::t = fcx.infcx().next_ty_var();
-        check_expr_has_type(fcx, &**element, t);
-        let element_ty = fcx.expr_ty(&**element);
+
+        let uty = unpack_expected(
+            fcx, expected,
+            |sty| match *sty {
+                ty::ty_vec(ty, _) => Some(ty),
+                _ => None
+        });
+
+        let (element_ty, t) = match uty {
+            Some(uty) => {
+                check_expr_coercable_to_type(fcx, &**element, uty);
+                (uty, uty)
+            }
+            None => {
+                let t: ty::t = fcx.infcx().next_ty_var();
+                check_expr_has_type(fcx, &**element, t);
+                (fcx.expr_ty(&**element), t)
+            }
+        };
+
         if ty::type_is_error(element_ty) {
             fcx.write_error(id);
-        }
-        else if ty::type_is_bot(element_ty) {
+        } else if ty::type_is_bot(element_ty) {
             fcx.write_bot(id);
-        }
-        else {
+        } else {
             let t = ty::mk_vec(tcx, t, Some(count));
             fcx.write_ty(id, t);
         }
@@ -3496,20 +3512,13 @@ pub fn check_block_with_expected(fcx: &FnCtxt,
             let ety = match expected {
                 Some(ety) => {
                     check_expr_coercable_to_type(fcx, e, ety);
-                    if ty::type_is_error(fcx.expr_ty(e)) {
-                        //TODO
-                        fcx.expr_ty(e)
-                    } else {
-                        ety
-                    }
+                    ety
                 }
                 None => {
                     check_expr(fcx, e);
                     fcx.expr_ty(e)
                 }
             };
-            //check_expr_with_opt_hint(fcx, e, expected);
-            //let ety = fcx.expr_ty(e);
 
             fcx.write_ty(blk.id, ety);
             if any_err {

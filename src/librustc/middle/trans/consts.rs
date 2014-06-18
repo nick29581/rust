@@ -10,8 +10,8 @@
 
 
 use back::abi;
-use lib::llvm::{llvm, ConstFCmp, ConstICmp, SetLinkage, PrivateLinkage, ValueRef, Bool, True, False};
-use lib::llvm::{IntEQ, IntNE, IntUGT, IntUGE, IntULT, IntULE, IntSGT, IntSGE, IntSLT, IntSLE,
+use lib::llvm::{llvm, ConstFCmp, ConstICmp, SetLinkage, PrivateLinkage, ValueRef, Bool, True};
+use lib::llvm::{False, IntEQ, IntNE, IntUGT, IntUGE, IntULT, IntULE, IntSGT, IntSGE, IntSLT, IntSLE,
     RealOEQ, RealOGT, RealOGE, RealOLT, RealOLE, RealONE};
 
 use metadata::csearch;
@@ -111,13 +111,14 @@ fn const_vec(cx: &CrateContext, e: &ast::Expr,
     (v, llunitty, inlineable.iter().fold(true, |a, &b| a && b))
 }
 
-fn const_addr_of(cx: &CrateContext, cv: ValueRef) -> ValueRef {
+fn const_addr_of(cx: &CrateContext, cv: ValueRef, mutbl: ast::Mutability) -> ValueRef {
     unsafe {
         let gv = "const".with_c_str(|name| {
             llvm::LLVMAddGlobal(cx.llmod, val_ty(cv).to_ref(), name)
         });
         llvm::LLVMSetInitializer(gv, cv);
-        llvm::LLVMSetGlobalConstant(gv, True);
+        llvm::LLVMSetGlobalConstant(gv,
+                                    if mutbl == ast::MutImmutable {True} else {False});
         SetLinkage(gv, PrivateLinkage);
         gv
     }
@@ -129,8 +130,6 @@ fn const_deref_ptr(cx: &CrateContext, v: ValueRef) -> ValueRef {
         None => v
     };
     unsafe {
-        // TODO
-        //assert_eq!(llvm::LLVMIsGlobalConstant(v), True);
         llvm::LLVMGetInitializer(v)
     }
 }
@@ -150,15 +149,8 @@ fn const_deref(cx: &CrateContext, v: ValueRef, t: ty::t, explicit: bool)
                     if ty::type_is_sized(cx.tcx(), mt.ty) {
                         (const_deref_ptr(cx, v), mt.ty)
                     } else {
-                        debug!("nrc deref fat pointer");
-                        // TODO broken
-                        /*let e1 = const_get_elt(cx, v, [0]);
-                        let p = const_deref_ptr(cx, e1);
-                        let val = C_struct(cx, [
-                                                p,
-                                                const_get_elt(cx, v, [1])
-                                            ], false);*/
-                        // TODO comment - this may not look like a deref...
+                        // Derefing a fat pointer does not change the representation,
+                        // just the type to ty_open.
                         (v, ty::mk_open(cx.tcx(), mt.ty))
                     }
                 }
@@ -232,7 +224,6 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                                     object");
                 }
                 ty::AutoDerefRef(ref adj) => {
-                    debug!("nrc AutoDerefRef {}",  adj.autoderefs);
                     let mut ty = ety;
                     // Save the last autoderef in case we can avoid it.
                     for _ in range(0, adj.autoderefs-1) {
@@ -243,29 +234,26 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
 
                     match adj.autoref {
                         None => {
-                            debug!("nrc no autorefs");
                             let (dv, dt) = const_deref(cx, llconst, ty, false);
                             llconst = dv;
 
                             // If we derefed a fat pointer then we will have an
                             // open type here. So we need to update the type with
                             // the one returned from const_deref.
-                            ety_adjusted = dt; 
+                            ety_adjusted = dt;
                         }
                         Some(ref autoref) => {
                             match *autoref {
-                                //  TODO _m
-                                ty::AutoUnsafe(_m) |
-                                ty::AutoPtr(ty::ReStatic, _m, None) => {
+                                ty::AutoUnsafe(_) |
+                                ty::AutoPtr(ty::ReStatic, _, None) => {
                                     // Don't copy data to do a deref+ref
                                     // (i.e., skip the last auto-deref).
                                     if adj.autoderefs == 0 {
                                         inlineable = false;
-                                        llconst = const_addr_of(cx, llconst);
+                                        llconst = const_addr_of(cx, llconst, ast::MutImmutable);
                                     }
                                 }
-                                ty::AutoPtr(ty::ReStatic, _m, Some(box ty::AutoUnsize(..))) => {
-                                    debug!("nrc auotptr + unsize");
+                                ty::AutoPtr(ty::ReStatic, _, Some(box ty::AutoUnsize(..))) => {
                                     if adj.autoderefs > 0 {
                                         // Seeing as we are deref'ing here and take a reference
                                         // again to make the pointer part of the far pointer below,
@@ -319,7 +307,6 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
             llvm::LLVMDumpValue(llconst);
             llvm::LLVMDumpValue(C_undef(llty));
         }
-        println!("adjusted type: {}", ty_to_str(cx.tcx(), ety_adjusted));
         cx.sess().bug(format!("const {} of type {} has size {} instead of {}",
                          e.repr(cx.tcx()), ty_to_str(cx.tcx(), ety),
                          csize, tsize).as_slice());
@@ -467,7 +454,9 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                           (const_deref_ptr(cx, e1), const_get_elt(cx, bv, [1]))
                       },
                       _ => cx.sess().span_bug(base.span,
-                                              format!("index-expr base must be a vector or string type, found {}", ty_to_str(cx.tcx(), bt)).as_slice())
+                                              format!("index-expr base must be a vector \
+                                                       or string type, found {}",
+                                                      ty_to_str(cx.tcx(), bt)).as_slice())
                   },
                   ty::ty_rptr(_, mt) => match ty::get(mt.ty).sty {
                       /*ty::ty_vec(_, None) | ty::ty_str => {
@@ -478,10 +467,14 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                           (const_deref_ptr(cx, bv), C_uint(cx, u))
                       },
                       _ => cx.sess().span_bug(base.span,
-                                              format!("index-expr base must be a vector or string type, found {}", ty_to_str(cx.tcx(), bt)).as_slice())
+                                              format!("index-expr base must be a vector \
+                                                       or string type, found {}",
+                                                      ty_to_str(cx.tcx(), bt)).as_slice())
                   },
                   _ => cx.sess().span_bug(base.span,
-                                          format!("index-expr base must be a vector or string type, found {}", ty_to_str(cx.tcx(), bt)).as_slice())
+                                          format!("index-expr base must be a vector \
+                                                   or string type, found {}",
+                                                  ty_to_str(cx.tcx(), bt)).as_slice())
               };
 
               let len = llvm::LLVMConstIntGetZExtValue(len) as u64;
@@ -555,22 +548,9 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
               }
             }, inlineable)
           }
-          ast::ExprAddrOf(mutbl, sub) => {
+          ast::ExprAddrOf(mutbl, ref sub) => {
               let (e, _, _) = const_expr(cx, &**sub, is_local);
-              if mutbl == ast::MutImmutable {
-                  (const_addr_of(cx, e), false)
-              } else {
-                // TODO assert we have a vec
-                // TODO refactor addr_of to take a const-ness bool
-                let gv = "const".with_c_str(|name| {
-                    llvm::LLVMAddGlobal(cx.llmod, val_ty(e).to_ref(), name)
-                });
-                llvm::LLVMSetInitializer(gv, e);
-                llvm::LLVMSetGlobalConstant(gv, False);
-                SetLinkage(gv, PrivateLinkage);
-                (gv, false)
-
-              }
+              (const_addr_of(cx, e, mutbl), false)
           }
           ast::ExprTup(ref es) => {
               let ety = ty::expr_ty(cx.tcx(), e);
@@ -615,38 +595,7 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                                                is_local);
             (v, inlineable)
           }
-          // TODO do we even need ast::ExprVstore ?
-          /*ast::ExprVstore(sub, store @ ast::ExprVstoreSlice) |
-          ast::ExprVstore(sub, store @ ast::ExprVstoreMutSlice) => {
-            match sub.node {
-              ast::ExprLit(ref lit) => {
-                match lit.node {
-                    ast::LitStr(..) => { const_expr(cx, &**sub, is_local) }
-                    _ => { cx.sess().span_bug(e.span, "bad const-slice lit") }
-                }
-              }
-              ast::ExprVec(ref es) => {
-                let (cv, llunitty, _) = const_vec(cx,
-                                                  e,
-                                                  es.as_slice(),
-                                                  is_local);
-                (const_addr_of(cx, cv), false)
-                // TODO really? We can lose all of this?
-                /*let llty = val_ty(cv);
-                let gv = "const".with_c_str(|name| {
-                    llvm::LLVMAddGlobal(cx.llmod, llty.to_ref(), name)
-                });
-                llvm::LLVMSetInitializer(gv, cv);
-                llvm::LLVMSetGlobalConstant(gv,
-                      if store == ast::ExprVstoreMutSlice { False } else { True });
-                SetLinkage(gv, PrivateLinkage);
-                let p = const_ptrcast(cx, gv, llunitty);
-                (C_struct(cx, [p, C_uint(cx, es.len())], false), false)*/
-              }
-              _ => cx.sess().span_bug(e.span, "bad const-slice expr")
-            }
-          }*/
-          ast::ExprRepeat(ref elem, refcount) => {
+          ast::ExprRepeat(ref elem, ref count) => {
             let vec_ty = ty::expr_ty(cx.tcx(), e);
             let unit_ty = ty::sequence_element_type(cx.tcx(), vec_ty);
             let llunitty = type_of::type_of(cx, unit_ty);
