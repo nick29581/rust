@@ -541,15 +541,6 @@ fn trans_datum_unadjusted<'a>(bcx: &'a Block<'a>,
         ast::ExprBox(_, ref contents) => {
             // Special case for `Box<T>` and `Gc<T>`
             match contents.node {
-                /*ast::ExprLit(lit) if ast_util::lit_is_str(lit) => {
-                    //TODO code dup
-                    // Special case for owned vectors.
-                    fcx.push_ast_cleanup_scope(contents.id);
-                    let datum = unpack_datum!(
-                        bcx, tvec::trans_uniq_vec(bcx, expr, contents));
-                    bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, contents.id);
-                    DatumBlock(bcx, datum)
-                }*/
                 ast::ExprRepeat(..) | ast::ExprVec(..) => {
                     // Special case for owned vectors.
                     fcx.push_ast_cleanup_scope(contents.id);
@@ -574,15 +565,6 @@ fn trans_datum_unadjusted<'a>(bcx: &'a Block<'a>,
         }
         ast::ExprAddrOf(_, ref x) => {
             match x.node {
-                // TODO er, ugly?
-                /*ast::ExprLit(lit) if ast_util::lit_is_str(lit) => {
-                    // Special case for strs.
-                    fcx.push_ast_cleanup_scope(x.id);
-                    let datum = unpack_datum!(
-                        bcx, tvec::trans_slice_vec(bcx, x, x));
-                    bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, x.id);
-                    DatumBlock(bcx, datum)
-                }*/
                 ast::ExprRepeat(..) | ast::ExprVec(..) => {
                     // Special case for slices.
                     fcx.push_ast_cleanup_scope(x.id);

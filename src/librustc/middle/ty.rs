@@ -1608,10 +1608,6 @@ pub fn sequence_element_type(cx: &ctxt, ty: t) -> t {
     match get(ty).sty {
         ty_vec(ty, _) => ty,
         ty_str => mk_mach_uint(ast::TyU8),
-        // TODO remove
-        //ty_ptr(mt{ty, ..}) | ty_rptr(_, mt{ty, ..}) |
-        //ty_box(ty) | ty_uniq(ty) |
-        // TODO does this make sense? WHo is the caller?
         ty_open(ty) => sequence_element_type(cx, ty),
         _ => cx.sess.bug(format!("sequence_element_type called on non-sequence value: {}",
                                  ty_to_str(cx, ty)).as_slice()),

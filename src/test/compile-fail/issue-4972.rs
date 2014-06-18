@@ -17,7 +17,7 @@ pub enum TraitWrapper {
 
 fn get_tw_map<'lt>(tw: &'lt TraitWrapper) -> &'lt MyTrait {
     match *tw { //~ ERROR failed to find
-        A(box ref map) => map, //~ ERROR mismatched types: expected `Box MyTrait` but found a box   
+        A(box ref map) => map, //~ ERROR mismatched types: expected `Box MyTrait` but found a box
     }
 }
 
