@@ -570,11 +570,12 @@ mod tests {
     #[test]
     fn test_ascii_vec() {
         let test = &[40u8, 32u8, 59u8];
-        assert_eq!(test.to_ascii(), v2ascii!([40, 32, 59]));
-        assert_eq!("( ;".to_ascii(), v2ascii!([40, 32, 59]));
+        let b: &[_] = v2ascii!([40, 32, 59]);
+        assert_eq!(test.to_ascii(), b);
+        assert_eq!("( ;".to_ascii(), b);
         let v = vec![40u8, 32u8, 59u8];
-        assert_eq!(v.as_slice().to_ascii(), v2ascii!([40, 32, 59]));
-        assert_eq!("( ;".to_string().as_slice().to_ascii(), v2ascii!([40, 32, 59]));
+        assert_eq!(v.as_slice().to_ascii(), b);
+        assert_eq!("( ;".to_string().as_slice().to_ascii(), b);
 
         assert_eq!("abCDef&?#".to_ascii().to_lower().into_str(), "abcdef&?#".to_string());
         assert_eq!("abCDef&?#".to_ascii().to_upper().into_str(), "ABCDEF&?#".to_string());

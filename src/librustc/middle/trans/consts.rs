@@ -318,8 +318,8 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
 // if it's assigned to a static.
 fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                          is_local: bool) -> (ValueRef, bool) {
-    let map_list = |exprs: &[@ast::Expr]| {
-        exprs.iter().map(|&e| first_two(const_expr(cx, &**e, is_local)))
+    let map_list = |exprs: &[Gc<ast::Expr>]| {
+        exprs.iter().map(|e| first_two(const_expr(cx, &**e, is_local)))
              .fold((Vec::new(), true),
                    |(l, all_inlineable), (val, inlineable)| {
                 (l.append_one(val), all_inlineable && inlineable)
@@ -500,8 +500,8 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
             let ety = ty::expr_ty(cx.tcx(), e);
             let llty = type_of::type_of(cx, ety);
             let (v, inlineable, basety) = const_expr(cx, &**base, is_local);
-            return (match (expr::cast_type_kind(basety),
-                           expr::cast_type_kind(ety)) {
+            return (match (expr::cast_type_kind(cx.tcx(), basety),
+                           expr::cast_type_kind(cx.tcx(), ety)) {
 
               (expr::cast_integral, expr::cast_integral) => {
                 let s = ty::type_is_signed(basety) as Bool;
@@ -673,7 +673,7 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                   _ => cx.sess().span_bug(e.span, "expected a struct or variant def")
               }
           }
-          ast::ExprParen(refe) => first_two(const_expr(cx, &**e, is_local)),
+          ast::ExprParen(ref e) => first_two(const_expr(cx, &**e, is_local)),
           ast::ExprBlock(ref block) => {
             match block.expr {
                 Some(ref expr) => first_two(const_expr(cx, &**expr, is_local)),

@@ -15,6 +15,7 @@ use middle::trans::adt;
 use middle::trans::common::*;
 use middle::trans::foreign;
 use middle::ty;
+use util::ppaux;
 use util::ppaux::Repr;
 
 use middle::trans::type_::Type;
@@ -151,13 +152,13 @@ pub fn sizing_type_of(cx: &CrateContext, t: ty::t) -> Type {
             }
         }
 
-        ty::ty_infer(..) | ty::ty_param(..) | ty::ty_err(..) => {
-            cx.sess().bug(format!("fictitious type {} in sizing_type_of()",
-                                  ppaux::ty_to_str(cx.tcx(), t)).as_slice())
-        }
-
         ty::ty_open(_) => {
             Type::struct_(cx, [Type::i8p(cx), Type::i8p(cx)], false)
+        }
+
+        ty::ty_infer(..) | ty::ty_param(..) | ty::ty_err(..) | ty::ty_trait(..) => {
+            cx.sess().bug(format!("fictitious type {} in sizing_type_of()",
+                                  ppaux::ty_to_str(cx.tcx(), t)).as_slice())
         }
     };
 

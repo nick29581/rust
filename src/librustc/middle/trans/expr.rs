@@ -268,7 +268,7 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
             _ => bcx.tcx().sess.span_bug(expr.span, "unsupported adjustment")
         };
 
-        DatumBlock(bcx, datum)
+        DatumBlock::new(bcx, datum)
     }
 
     fn ref_ptr<'a>(bcx: &'a Block<'a>,
@@ -356,7 +356,7 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
         Store(bcx, base, get_dataptr(bcx, scratch.val));
         Store(bcx, len, get_len(bcx, scratch.val));
 
-        DatumBlock(bcx, scratch.to_expr_datum())
+        DatumBlock::new(bcx, scratch.to_expr_datum())
     }
 
     fn unsize_unique<'a>(bcx: &'a Block<'a>,
@@ -402,7 +402,7 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
         }
 
         Store(bcx, ll_len, get_len(bcx, scratch.val));
-        DatumBlock(bcx, scratch.to_expr_datum())
+        DatumBlock::new(bcx, scratch.to_expr_datum())
     }
 
     fn add_env<'a>(bcx: &'a Block<'a>,
@@ -535,26 +535,36 @@ fn trans_datum_unadjusted<'a>(bcx: &'a Block<'a>,
         ast::ExprField(ref base, ident, _) => {
             trans_rec_field(bcx, &**base, ident.node)
         }
-        ast::ExprIndex(base, idx) => {
+        ast::ExprIndex(ref base, ref idx) => {
             trans_index(bcx, expr.span, &**base, &**idx)
         }
         ast::ExprBox(_, ref contents) => {
             // Special case for `Box<T>` and `Gc<T>`
-            match contents.node {
-                ast::ExprRepeat(..) | ast::ExprVec(..) => {
-                    // Special case for owned vectors.
-                    fcx.push_ast_cleanup_scope(contents.id);
-                    let datum = unpack_datum!(
-                        bcx, tvec::trans_uniq_vec(bcx, expr, contents));
-                    bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, contents.id);
-                    DatumBlock(bcx, datum)
+            let box_ty = expr_ty(bcx, expr);
+            let contents_ty = expr_ty(bcx, &**contents);
+            match ty::get(box_ty).sty {
+                ty::ty_uniq(..) => {
+                    match contents.node {
+                        ast::ExprRepeat(..) | ast::ExprVec(..) => {
+                            // Special case for owned vectors.
+                            fcx.push_ast_cleanup_scope(contents.id);
+                            let datum = unpack_datum!(
+                                bcx, tvec::trans_uniq_vec(bcx, expr, &**contents));
+                            bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, contents.id);
+                            DatumBlock::new(bcx, datum)
+                        }
+                        _ => {
+                            trans_uniq_expr(bcx, box_ty, &**contents, contents_ty)
+                        }
+                    }
                 }
-                _ => {
-                    let box_ty = expr_ty(bcx, expr);
-                    let contents_ty = expr_ty(bcx, contents);
-                    trans_uniq_expr(bcx, box_ty, contents, contents_ty)
+                ty::ty_box(..) => {
+                    trans_managed_expr(bcx, box_ty, &**contents, contents_ty)
                 }
+                _ => bcx.sess().span_bug(expr.span,
+                                         "expected unique or managed box")
             }
+
         }
         ast::ExprLit(ref lit) => trans_immediate_lit(bcx, expr, (**lit).clone()),
         ast::ExprBinary(op, ref lhs, ref rhs) => {
@@ -571,7 +581,7 @@ fn trans_datum_unadjusted<'a>(bcx: &'a Block<'a>,
                     let datum = unpack_datum!(
                         bcx, tvec::trans_slice_vec(bcx, expr, &**x));
                     bcx = fcx.pop_and_trans_ast_cleanup_scope(bcx, x.id);
-                    DatumBlock(bcx, datum)
+                    DatumBlock::new(bcx, datum)
                 }
                 _ => {
                     trans_addr_of(bcx, expr, &**x)
@@ -619,7 +629,7 @@ fn trans_rec_field<'a>(bcx: &'a Block<'a>,
                 let len = Load(bcx, get_len(bcx, base_datum.val));
                 Store(bcx, len, get_len(bcx, scratch.val));
 
-                DatumBlock(bcx, scratch.to_expr_datum())
+                DatumBlock::new(bcx, scratch.to_expr_datum())
 
             }
         })
@@ -1408,7 +1418,7 @@ fn trans_addr_of<'a>(bcx: &'a Block<'a>,
             let len = Load(bcx, get_len(bcx, sub_datum.val));
             Store(bcx, len, get_len(bcx, scratch.val));
 
-            DatumBlock(bcx, scratch.to_expr_datum())
+            DatumBlock::new(bcx, scratch.to_expr_datum())
         }
         _ => {
             // Sized value, ref to a thin pointer
@@ -1965,9 +1975,9 @@ fn deref_once<'a>(bcx: &'a Block<'a>,
             } else {
                 // A fat pointer and an opened DST value have the same represenation
                 // just different types.
-                DatumBlock(bcx, Datum(datum.val,
-                                      ty::mk_open(bcx.tcx(), content_ty),
-                                      datum.kind))
+                DatumBlock::new(bcx, Datum::new(datum.val,
+                                                ty::mk_open(bcx.tcx(), content_ty),
+                                                datum.kind))
             }
         }
 
@@ -1990,13 +2000,13 @@ fn deref_once<'a>(bcx: &'a Block<'a>,
                 // rvalue for non-owning pointers like &T or *T, in which
                 // case cleanup *is* scheduled elsewhere, by the true
                 // owner (or, in the case of *T, by the user).
-                DatumBlock(bcx, Datum(ptr, content_ty, LvalueExpr))
+                DatumBlock::new(bcx, Datum::new(ptr, content_ty, LvalueExpr))
             } else {
                 // A fat pointer and an opened DST value have the same represenation
                 // just different types.
-                DatumBlock(bcx, Datum(datum.val,
-                                      ty::mk_open(bcx.tcx(), content_ty),
-                                      datum.kind))
+                DatumBlock::new(bcx, Datum::new(datum.val,
+                                                ty::mk_open(bcx.tcx(), content_ty),
+                                                datum.kind))
             }
         }
 

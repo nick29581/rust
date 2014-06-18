@@ -34,7 +34,7 @@ fn foo2<T:ToBar>(x: &Fat<[T]>) {
     assert!(x.f2 == "some str");
 }
 
-#[deriving(Eq)]
+#[deriving(PartialEq,Eq)]
 struct Bar;
 
 trait ToBar {

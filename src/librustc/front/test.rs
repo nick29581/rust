@@ -407,10 +407,10 @@ fn mk_test_descs(cx: &TestCtxt) -> Gc<ast::Expr> {
     box(GC) ast::Expr {
         id: ast::DUMMY_NODE_ID,
         node: ast::ExprAddrOf(ast::MutImmutable,
-            @ast::Expr {
-            id: ast::DUMMY_NODE_ID,
-            node: ast::ExprVec(cx.testfns.borrow().iter().map(|test| {
-                mk_test_desc_and_fn_rec(cx, test)
+            box(GC) ast::Expr {
+                id: ast::DUMMY_NODE_ID,
+                node: ast::ExprVec(cx.testfns.borrow().iter().map(|test| {
+                    mk_test_desc_and_fn_rec(cx, test)
             }).collect()),
             span: DUMMY_SP,
         }),

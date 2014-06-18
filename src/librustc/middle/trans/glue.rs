@@ -281,7 +281,7 @@ fn trans_struct_drop<'a>(bcx: &'a Block<'a>,
 
     let dtor_ty = ty::mk_ctor_fn(bcx.tcx(), ast::DUMMY_NODE_ID,
                                  [get_drop_glue_type(bcx.ccx(), t)], ty::mk_nil());
-    let (_, bcx) = invoke(bcx, dtor_addr, args, dtor_ty, None);
+    let (_, bcx) = invoke(bcx, dtor_addr, args, dtor_ty, None, false);
 
     bcx.fcx.pop_and_trans_custom_cleanup_scope(bcx, field_scope)
 }

@@ -622,7 +622,8 @@ pub fn trans_call_inner<'a>(
                                       llfn,
                                       llargs,
                                       callee_ty,
-                                      call_info);
+                                      call_info,
+                                      dest.is_none());
         bcx = b;
         llresult = llret;
 

@@ -1353,14 +1353,14 @@ impl<'a> Parser<'a> {
         } else if self.token == token::TILDE {
             // OWNED POINTER
             self.bump();
-            let last_span = self.last_span;
+            let span = self.last_span;
             match self.token {
                 token::IDENT(ref ident, _)
                         if "str" == token::get_ident(*ident).get() => {
                     // This is OK (for now).
                 }
                 token::LBRACKET => {}   // Also OK.
-                _ => self.obsolete(self.last_span, ObsoleteOwnedType)
+                _ => self.obsolete(span, ObsoleteOwnedType)
             }
             TyUniq(self.parse_ty(false))
         } else if self.token == token::BINOP(token::STAR) {
@@ -2391,12 +2391,13 @@ impl<'a> Parser<'a> {
           }
           token::TILDE => {
             self.bump();
+            let span = self.last_span;
             match self.token {
                 token::LIT_STR(_) => {
                     // This is OK (for now).
                 }
                 token::LBRACKET => {}   // Also OK.
-                _ => self.obsolete(self.last_span, ObsoleteOwnedExpr)
+                _ => self.obsolete(span, ObsoleteOwnedExpr)
             }
 
             let e = self.parse_prefix_expr();

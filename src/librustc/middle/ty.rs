@@ -212,7 +212,7 @@ pub enum AutoAdjustment {
                subst::Substs /* Trait substitutions */)
 }
 
-#[deriving(Clone, Decodable, Encodable, Eq, Show)]
+#[deriving(Clone, Decodable, Encodable, PartialEq, Show)]
 pub enum UnsizeKind {
     // [T, ..n] -> [T], the uint field is n.
     UnsizeLength(uint),
@@ -2988,10 +2988,11 @@ pub fn unsize_ty(cx: &ctxt,
         },
         &UnsizeStruct(box ref k, tp_index) => match get(ty).sty {
             ty_struct(did, ref substs) => {
-                let old_ty = substs.tps.get(tp_index);
+                let ty_substs = substs.types.get_vec(subst::TypeSpace);
+                let old_ty = ty_substs.get(tp_index);
                 let new_ty = unsize_ty(cx, *old_ty, k, span);
                 let mut unsized_substs = substs.clone();
-                *unsized_substs.tps.get_mut(tp_index) = new_ty;
+                *unsized_substs.types.get_mut_vec(subst::TypeSpace).get_mut(tp_index) = new_ty;
                 mk_struct(cx, did, unsized_substs)
             }
             _ => cx.sess.span_bug(span,
@@ -3287,7 +3288,7 @@ pub fn ty_sort_str(cx: &ctxt, t: t) -> String {
             }
         }
         ty_err => "type error".to_string(),
-        ty_open(_) => "opened DST".to_strbuf(),
+        ty_open(_) => "opened DST".to_string(),
     }
 }
 

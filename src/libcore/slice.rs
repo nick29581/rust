@@ -265,7 +265,10 @@ pub mod traits {
                 order::ne(self.iter(), other.iter())
         }
     }
-    impl<'a,T:Eq> Eq for &'a mut [T] {
+
+    impl<'a,T:Eq> Eq for &'a [T] {}
+
+    impl<'a,T:PartialEq> PartialEq for &'a mut [T] {
         fn eq(&self, other: & &'a mut [T]) -> bool {
             self.len() == other.len() &&
                 order::eq(self.iter(), other.iter())
@@ -276,7 +279,7 @@ pub mod traits {
         }
     }
 
-    impl<'a,T:Eq> Eq for &'a [T] {}
+    impl<'a,T:Eq> Eq for &'a mut [T] {}
 
     impl<'a,T:PartialEq, V: Vector<T>> Equiv<V> for &'a [T] {
         #[inline]

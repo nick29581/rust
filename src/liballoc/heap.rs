@@ -12,6 +12,7 @@
 // FIXME: #13996: mark the `allocate` and `reallocate` return value as `noalias`
 //                and `nonnull`
 
+use core::ptr::RawPtr;
 #[cfg(not(test))] use core::raw;
 #[cfg(not(test))] use util;
 

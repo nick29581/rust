@@ -109,8 +109,6 @@ use core::iter::{range_step, MultiplicativeIterator};
 
 use Collection;
 use vec::Vec;
-#[cfg(not(stage0))]
-use raw::Slice;
 
 pub use core::slice::{ref_slice, mut_ref_slice, Splits, Windows};
 pub use core::slice::{Chunks, Vector, ImmutableVector, ImmutableEqVector};
@@ -289,64 +287,6 @@ pub trait CloneableVector<T> {
 /// Extension methods for vector slices
 impl<'a, T: Clone> CloneableVector<T> for &'a [T] {
     /// Returns a copy of `v`.
-    #[cfg(not(stage0))]
-    fn to_owned(&self) -> ~[T] {
-        use num::CheckedMul;
-        use option::Expect;
-
-        let len = self.len();
-
-        if len == 0 {
-            unsafe {
-                let slice: Slice<T> = Slice{data: 0 as *T, len: 0};
-                mem::transmute(slice)
-            }
-        } else {
-            let unit_size = mem::size_of::<T>();
-            let data_size = if unit_size == 0 {
-                len
-            } else {
-                let data_size = len.checked_mul(&unit_size);
-                data_size.expect("overflow in from_iter()")
-            };
-
-            unsafe {
-                // this should pass the real required alignment
-                let ret = allocate(data_size, 8) as *mut T;
-
-                if unit_size > 0 {
-                    // Be careful with the following loop. We want it to be optimized
-                    // to a memcpy (or something similarly fast) when T is Copy. LLVM
-                    // is easily confused, so any extra operations during the loop can
-                    // prevent this optimization.
-                    let mut i = 0;
-                    let p = &mut (*ret) as *mut _ as *mut T;
-                    try_finally(
-                        &mut i, (),
-                        |i, ()| while *i < len {
-                            mem::move_val_init(
-                                &mut(*p.offset(*i as int)),
-                                self.unsafe_ref(*i).clone());
-                            *i += 1;
-                        },
-                        |i| if *i < len {
-                            // we must be failing, clean up after ourselves
-                            for j in range(0, *i as int) {
-                                ptr::read(&*p.offset(j));
-                            }
-                            // FIXME: #13994 (should pass align and size here)
-                            deallocate(ret as *mut u8, 0, 8);
-                        });
-                }
-                let slice: Slice<T> = Slice{data: ret as *T, len: len};
-                mem::transmute(slice)
-            }
-        }
-    }
-
-    /// Returns a copy of `v`.
-    // NOTE: remove after snapshot
-    #[cfg(stage0)]
     #[inline]
     fn to_owned(&self) -> Vec<T> { Vec::from_slice(*self) }
 
@@ -671,11 +611,13 @@ pub trait MutableOrdVector<T> {
     /// # Example
     ///
     /// ```rust
-    /// let v = &mut [0, 1, 2];
+    /// let v: &mut [_] = &mut [0, 1, 2];
     /// v.next_permutation();
-    /// assert_eq!(v, &mut [0, 2, 1]);
+    /// let b: &mut [_] = &mut [0, 2, 1];
+    /// assert!(v == b);
     /// v.next_permutation();
-    /// assert_eq!(v, &mut [1, 0, 2]);
+    /// let b: &mut [_] = &mut [1, 0, 2];
+    /// assert!(v == b);
     /// ```
     fn next_permutation(self) -> bool;
 
@@ -686,11 +628,13 @@ pub trait MutableOrdVector<T> {
     /// # Example
     ///
     /// ```rust
-    /// let v = &mut [1, 0, 2];
+    /// let v: &mut [_] = &mut [1, 0, 2];
     /// v.prev_permutation();
-    /// assert_eq!(v, &mut [0, 2, 1]);
+    /// let b: &mut [_] = &mut [0, 2, 1];
+    /// assert!(v == b);
     /// v.prev_permutation();
-    /// assert_eq!(v, &mut [0, 1, 2]);
+    /// let b: &mut [_] = &mut [0, 1, 2];
+    /// assert!(v == b);
     /// ```
     fn prev_permutation(self) -> bool;
 }
@@ -929,10 +873,10 @@ mod tests {
     fn test_initn() {
         let mut a = vec![11, 12, 13];
         let b: &[int] = &[11, 12, 13];
-        assert_eq!(a.initn(0), b);
+        assert_eq!(a.as_slice().initn(0), b);
         a = vec![11, 12, 13];
         let b: &[int] = &[11];
-        assert_eq!(a.initn(2), b);
+        assert_eq!(a.as_slice().initn(2), b);
     }
 
     #[test]
@@ -1254,23 +1198,30 @@ mod tests {
         let v : &mut[int] = &mut[1, 2, 3, 4, 5];
         assert!(v.prev_permutation() == false);
         assert!(v.next_permutation());
-        assert_eq!(v, &mut[1, 2, 3, 5, 4]);
+        let b: &mut[int] = &mut[1, 2, 3, 5, 4];
+        assert!(v == b);
         assert!(v.prev_permutation());
-        assert_eq!(v, &mut[1, 2, 3, 4, 5]);
+        let b: &mut[int] = &mut[1, 2, 3, 4, 5];
+        assert!(v == b);
         assert!(v.next_permutation());
         assert!(v.next_permutation());
-        assert_eq!(v, &mut[1, 2, 4, 3, 5]);
+        let b: &mut[int] = &mut[1, 2, 4, 3, 5];
+        assert!(v == b);
         assert!(v.next_permutation());
-        assert_eq!(v, &mut[1, 2, 4, 5, 3]);
+        let b: &mut[int] = &mut[1, 2, 4, 5, 3];
+        assert!(v == b);
 
         let v : &mut[int] = &mut[1, 0, 0, 0];
         assert!(v.next_permutation() == false);
         assert!(v.prev_permutation());
-        assert_eq!(v, &mut[0, 1, 0, 0]);
+        let b: &mut[int] = &mut[0, 1, 0, 0];
+        assert!(v == b);
         assert!(v.prev_permutation());
-        assert_eq!(v, &mut[0, 0, 1, 0]);
+        let b: &mut[int] = &mut[0, 0, 1, 0];
+        assert!(v == b);
         assert!(v.prev_permutation());
-        assert_eq!(v, &mut[0, 0, 0, 1]);
+        let b: &mut[int] = &mut[0, 0, 0, 1];
+        assert!(v == b);
         assert!(v.prev_permutation() == false);
     }
 
@@ -1278,27 +1229,31 @@ mod tests {
     fn test_lexicographic_permutations_empty_and_short() {
         let empty : &mut[int] = &mut[];
         assert!(empty.next_permutation() == false);
-        assert_eq!(empty, &mut[]);
+        let b: &mut[int] = &mut[];
+        assert!(empty == b);
         assert!(empty.prev_permutation() == false);
-        assert_eq!(empty, &mut[]);
+        assert!(empty == b);
 
         let one_elem : &mut[int] = &mut[4];
         assert!(one_elem.prev_permutation() == false);
-        assert_eq!(one_elem, &mut[4]);
+        let b: &mut[int] = &mut[4];
+        assert!(one_elem == b);
         assert!(one_elem.next_permutation() == false);
-        assert_eq!(one_elem, &mut[4]);
+        assert!(one_elem == b);
 
         let two_elem : &mut[int] = &mut[1, 2];
         assert!(two_elem.prev_permutation() == false);
-        assert_eq!(two_elem, &mut[1, 2]);
+        let b : &mut[int] = &mut[1, 2];
+        let c : &mut[int] = &mut[2, 1];
+        assert!(two_elem == b);
         assert!(two_elem.next_permutation());
-        assert_eq!(two_elem, &mut[2, 1]);
+        assert!(two_elem == c);
         assert!(two_elem.next_permutation() == false);
-        assert_eq!(two_elem, &mut[2, 1]);
+        assert!(two_elem == c);
         assert!(two_elem.prev_permutation());
-        assert_eq!(two_elem, &mut[1, 2]);
+        assert!(two_elem == b);
         assert!(two_elem.prev_permutation() == false);
-        assert_eq!(two_elem, &mut[1, 2]);
+        assert!(two_elem == b);
     }
 
     #[test]
@@ -1440,14 +1395,10 @@ mod tests {
 
     #[test]
     fn test_partitioned() {
-        let v: Box<[int]> = box [];
-        assert_eq!(v.partitioned(|x: &int| *x < 3), (vec![], vec![]));
-        let v: Box<[int]> = box [1, 2, 3];
-        assert_eq!(v.partitioned(|x: &int| *x < 4), (vec![1, 2, 3], vec![]));
-        let v: Box<[int]> = box [1, 2, 3];
-        assert_eq!(v.partitioned(|x: &int| *x < 2), (vec![1], vec![2, 3]));
-        let v: Box<[int]> = box [1, 2, 3];
-        assert_eq!(v.partitioned(|x: &int| *x < 0), (vec![], vec![1, 2, 3]));
+        assert_eq!(([]).partitioned(|x: &int| *x < 3), (vec![], vec![]));
+        assert_eq!(([1, 2, 3]).partitioned(|x: &int| *x < 4), (vec![1, 2, 3], vec![]));
+        assert_eq!(([1, 2, 3]).partitioned(|x: &int| *x < 2), (vec![1], vec![2, 3]));
+        assert_eq!(([1, 2, 3]).partitioned(|x: &int| *x < 0), (vec![], vec![1, 2, 3]));
     }
 
     #[test]
@@ -1949,13 +1900,13 @@ mod tests {
                        "[[], [1], [1, 1]]".to_string());
 
         let empty_mut: &mut [int] = &mut[];
-        test_show_vec!(empty_mut, "[]".to_strbuf());
+        test_show_vec!(empty_mut, "[]".to_string());
         let v: &mut[int] = &mut[1];
-        test_show_vec!(v, "[1]".to_strbuf());
+        test_show_vec!(v, "[1]".to_string());
         let v: &mut[int] = &mut[1, 2, 3];
-        test_show_vec!(v, "[1, 2, 3]".to_strbuf());
+        test_show_vec!(v, "[1, 2, 3]".to_string());
         let v: &mut [&mut[uint]] = &mut[&mut[], &mut[1u], &mut[1u, 1u]];
-        test_show_vec!(v, "[[], [1], [1, 1]]".to_strbuf());
+        test_show_vec!(v, "[[], [1], [1, 1]]".to_string());
     }
 
     #[test]

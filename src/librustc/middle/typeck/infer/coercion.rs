@@ -65,7 +65,7 @@ we may want to adjust precisely when coercions occur.
 */
 
 use middle::subst;
-use middle::ty::{AutoPtr, AutoBorrowVec, AutoDerefRef, AutoUnsize};
+use middle::ty::{AutoPtr, AutoBorrowObj, AutoDerefRef, AutoUnsize};
 use middle::ty::{mt};
 use middle::ty;
 use middle::typeck::infer::{CoerceResult, resolve_type, Coercion};
@@ -420,19 +420,23 @@ impl<'f> Coerce<'f> {
                             // We do this by trying to unsize each actual type
                             // parameter in substs and seeing if that gets us the
                             // right type for the last field.
-                            let mut new_substs: Option<ty::substs> = None;
+                            let mut new_substs: Option<subst::Substs> = None;
                             let mut index = 0u;
-                            for (i, tp) in substs.tps.iter().enumerate() {
+                            let ty_substs = substs.types.get_vec(subst::TypeSpace);
+                            for (i, tp) in ty_substs.iter().enumerate() {
                                 let should_break = self.unpack_actual_value(*tp, |tp|
                                     match self.unsize_ty(tp) {
                                         Some((utp, _)) => {
                                             let mut unsized_substs = substs.clone();
-                                            *unsized_substs.tps.get_mut(i) = utp;
+                                            *unsized_substs.types.get_mut_vec(subst::TypeSpace)
+                                                .get_mut(i) = utp;
                                             let subst_field_ty = ty::lookup_field_type(tcx,
-                                                                                       did,
-                                                                                       last_field.id,
-                                                                                       &unsized_substs);
-                                            if ty::get(subst_field_ty).sty == ty::get(field_ty).sty {
+                                                                   did,
+                                                                   last_field.id,
+                                                                   &unsized_substs);
+                                            let subst_sty = &ty::get(subst_field_ty).sty;
+                                            let field_sty = &ty::get(field_ty).sty;
+                                            if *subst_sty == *field_sty {
                                                 new_substs = Some(unsized_substs);
                                                 index = i;
                                                 true

@@ -13,7 +13,6 @@
 use core::prelude::*;
 use core::iter::{range_step, Repeat};
 use core::slice::raw;
-use core::mem;
 
 use {Rng, SeedableRng, Rand};
 

@@ -2305,7 +2305,7 @@ mod bench {
         let len = s.split(' ').count();
 
         let c: &[char] = &[' '];
-        b.iter(|| assert_eq!(s.split(c).len(), len));
+        b.iter(|| assert_eq!(s.split(c).count(), len));
     }
 
     #[bench]

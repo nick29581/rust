@@ -155,15 +155,15 @@ mod test {
 
         assert_eq!(Ok(3), reader.read(buf));
         let a: &[u8] = &[1,2,3];
-        assert_eq!(a, bufas_slice());
+        assert_eq!(a, buf.as_slice());
 
         assert_eq!(Ok(3), reader.read(buf));
         let a: &[u8] = &[4,5,6];
-        assert_eq!(a, bufas_slice());
+        assert_eq!(a, buf.as_slice());
 
         assert_eq!(Ok(2), reader.read(buf));
         let a: &[u8] = &[7,8,6];
-        assert_eq!(a, bufas_slice());
+        assert_eq!(a, buf.as_slice());
 
         match reader.read(buf.as_mut_slice()) {
             Ok(..) => fail!(),

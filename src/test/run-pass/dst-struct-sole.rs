@@ -30,7 +30,7 @@ fn foo2<T:ToBar>(x: &Fat<[T]>) {
     assert!(x.ptr[1].to_bar() == bar);
 }
 
-#[deriving(Eq)]
+#[deriving(PartialEq,Eq)]
 struct Bar;
 
 trait ToBar {
