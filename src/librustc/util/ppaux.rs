@@ -397,7 +397,7 @@ pub fn ty_to_str(cx: &ctxt, typ: t) -> String {
           let trait_def = ty::lookup_trait_def(cx, did);
           let ty = parameterized(cx, base.as_slice(),
                                  substs, &trait_def.generics);
-          let bound_sep = if bounds.is_empty() { "" } else { ":" };
+          let bound_sep = if bounds.is_empty() { "" } else { "+" };
           let bound_str = bounds.repr(cx);
           format!("{}{}{}",
                   ty,

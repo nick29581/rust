@@ -40,6 +40,7 @@ use metadata::csearch;
 use middle::def;
 use middle::lang_items::MallocFnLangItem;
 use middle::mem_categorization::Typer;
+use middle::subst;
 use middle::trans::_match;
 use middle::trans::adt;
 use middle::trans::asm;
@@ -62,7 +63,7 @@ use middle::trans::inline;
 use middle::trans::tvec;
 use middle::trans::type_of;
 use middle::ty::struct_fields;
-use middle::ty::{AutoBorrowObj, AutoDerefRef, AutoAddEnv, AutoObject, AutoUnsafe};
+use middle::ty::{AutoBorrowObj, AutoDerefRef, AutoAddEnv, AutoUnsafe};
 use middle::ty::{AutoPtr};
 use middle::ty;
 use middle::typeck;
@@ -215,13 +216,6 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                 _ => {}
             }
         }
-        AutoObject(..) => {
-            let adjusted_ty = ty::expr_ty_adjusted(bcx.tcx(), expr);
-            let scratch = rvalue_scratch_datum(bcx, adjusted_ty, "__adjust");
-            bcx = meth::trans_trait_cast(
-                bcx, datum, expr.id, SaveIn(scratch.val));
-            datum = scratch.to_expr_datum();
-        }
     }
     debug!("after adjustments, datum={}", datum.to_str(bcx.ccx()));
     return DatumBlock {bcx: bcx, datum: datum};
@@ -236,11 +230,11 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
 
         let datum = match autoref {
             &AutoUnsafe(..) => {
-                debug!("AutoUnsafe");
+                debug!("  AutoUnsafe");
                 unpack_datum!(bcx, ref_ptr(bcx, expr, datum))
             }
             &AutoPtr(_, _, ref a) => {
-                debug!("AutoPtr");
+                debug!("  AutoPtr");
                 match a {
                     &Some(box ref a) => datum = unpack_datum!(bcx,
                                                               apply_autoref(a, bcx, expr, datum)),
@@ -248,21 +242,21 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                 }
                 unpack_datum!(bcx, ref_ptr(bcx, expr, datum))
             }
-            &ty::AutoUnsize(ref k @ ty::UnsizeLength(_)) => {
-                debug!("AutoUnsize(UnsizeLength)");
-                unpack_datum!(bcx, unsize_vec(bcx, expr, datum, k))
-            }
-            &ty::AutoUnsize(ref k @ ty::UnsizeStruct(..)) => {
-                debug!("AutoUnsize");
-                unpack_datum!(bcx, unsize_struct(bcx, expr, datum, k))
+            &ty::AutoUnsize(ref k) => {
+                debug!("  AutoUnsize");
+                unpack_datum!(bcx, unsize_expr(bcx, expr, datum, k))
             }
 
             &ty::AutoUnsizeUniq(ty::UnsizeLength(len)) => {
-                debug!("AutoUnsizeUniq");
+                debug!("  AutoUnsizeUniq(UnsizeLength)");
                 unpack_datum!(bcx, unsize_unique(bcx, expr, datum, len))
             }
+            &ty::AutoUnsizeUniq(ref k @ ty::UnsizeVtable(..)) => {
+                debug!("  AutoUnsizeUniq(UnsizeVtable)");
+                unpack_datum!(bcx, unsize_unique_trait(bcx, expr, datum, k))
+            }
             &AutoBorrowObj(..) => {
-                debug!("AutoBorrowObj");
+                debug!("  AutoBorrowObj");
                 unpack_datum!(bcx, auto_borrow_obj(bcx, expr, datum))
             }
             _ => bcx.tcx().sess.span_bug(expr.span, "unsupported adjustment")
@@ -289,41 +283,50 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
     // Retrieve the information we are losing (making dynamic) in an unsizing
     // adjustment.
     fn unsized_info<'a>(bcx: &'a Block<'a>,
-                        kind: &ty::UnsizeKind) -> ValueRef {
+                        kind: &ty::UnsizeKind,
+                        id: ast::NodeId,
+                        sized_ty: ty::t) -> ValueRef {
         match kind {
             &ty::UnsizeLength(len) => C_uint(bcx.ccx(), len),
-            &ty::UnsizeStruct(box ref k, _) => unsized_info(bcx, k),
-            _ => bcx.tcx().sess.bug("unsupported adjustment in unsized_info")
+            &ty::UnsizeStruct(box ref k, tp_index) => match ty::get(sized_ty).sty {
+                ty::ty_struct(_, ref substs) => {
+                    let ty_substs = substs.types.get_vec(subst::TypeSpace);
+                    let sized_ty = ty_substs.get(tp_index);
+                    unsized_info(bcx, k, id, *sized_ty)
+                }
+                _ => bcx.sess().bug(format!("UnsizeStruct with bad sty: {}",
+                                          bcx.ty_to_str(sized_ty)).as_slice())
+            },
+            &ty::UnsizeVtable(..) =>
+                PointerCast(bcx,
+                            meth::vtable_ptr(bcx, id, sized_ty),
+                            Type::vtable_ptr(bcx.ccx()))
         }
     }
 
-    fn unsize_struct<'a>(bcx: &'a Block<'a>,
-                         expr: &ast::Expr,
-                         datum: Datum<Expr>,
-                         k: &ty::UnsizeKind)
-                         -> DatumBlock<'a, Expr> {
+    fn unsize_expr<'a>(bcx: &'a Block<'a>,
+                       expr: &ast::Expr,
+                       datum: Datum<Expr>,
+                       k: &ty::UnsizeKind)
+                       -> DatumBlock<'a, Expr> {
         let tcx = bcx.tcx();
-        let unsized_ty = ty::unsize_ty(tcx, datum.ty, k, expr.span);
+        let datum_ty = datum.ty;
+        let unsized_ty = ty::unsize_ty(tcx, datum_ty, k, expr.span);
         let dest_ty = ty::mk_open(tcx, unsized_ty);
-        let base = |bcx, val| PointerCast(bcx,
-                                          val,
-                                          type_of::type_of(bcx.ccx(), unsized_ty).ptr_to());
-        let len = |bcx, _val| unsized_info(bcx, k);
-        into_fat_ptr(bcx, expr, datum, dest_ty, base, len)
-
-    }
-
-    fn unsize_vec<'a>(bcx: &'a Block<'a>,
-                      expr: &ast::Expr,
-                      datum: Datum<Expr>,
-                      k: &ty::UnsizeKind)
-                      -> DatumBlock<'a, Expr> {
-        let tcx = bcx.tcx();
-        let unsized_ty = ty::unsize_ty(tcx, datum.ty, k, expr.span);
-        let dest_ty = ty::mk_open(tcx, unsized_ty);
-        let base = |bcx, val| GEPi(bcx, val, [0u, 0u]);
-        let len = |bcx, _val| unsized_info(bcx, k);
-        into_fat_ptr(bcx, expr, datum, dest_ty, base, len)
+        // Closures for extracting and manipulating the data and payload parts of
+        // the fat pointer.
+        let base = match k {
+            &ty::UnsizeStruct(..) =>
+                |bcx, val| PointerCast(bcx,
+                                       val,
+                                       type_of::type_of(bcx.ccx(), unsized_ty).ptr_to()),
+            &ty::UnsizeLength(..) =>
+                |bcx, val| GEPi(bcx, val, [0u, 0u]),
+            &ty::UnsizeVtable(..) =>
+                |_bcx, val| PointerCast(bcx, val, Type::i8p(bcx.ccx()))
+        };
+        let info = |bcx, _val| unsized_info(bcx, k, expr.id, datum_ty);
+        into_fat_ptr(bcx, expr, datum, dest_ty, base, info)
     }
 
     fn ref_fat_ptr<'a>(bcx: &'a Block<'a>,
@@ -342,7 +345,7 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                         datum: Datum<Expr>,
                         dest_ty: ty::t,
                         base: |&'a Block<'a>, ValueRef| -> ValueRef,
-                        len: |&'a Block<'a>, ValueRef| -> ValueRef)
+                        info: |&'a Block<'a>, ValueRef| -> ValueRef)
                         -> DatumBlock<'a, Expr> {
         let mut bcx = bcx;
 
@@ -350,11 +353,11 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
         let lval = unpack_datum!(bcx,
                                  datum.to_lvalue_datum(bcx, "into_fat_ptr", expr.id));
         let base = base(bcx, lval.val);
-        let len = len(bcx, lval.val);
+        let info = info(bcx, lval.val);
 
         let scratch = rvalue_scratch_datum(bcx, dest_ty, "__fat_ptr");
         Store(bcx, base, get_dataptr(bcx, scratch.val));
-        Store(bcx, len, get_len(bcx, scratch.val));
+        Store(bcx, info, get_len(bcx, scratch.val));
 
         DatumBlock::new(bcx, scratch.to_expr_datum())
     }
@@ -402,6 +405,32 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
         }
 
         Store(bcx, ll_len, get_len(bcx, scratch.val));
+        DatumBlock::new(bcx, scratch.to_expr_datum())
+    }
+
+    fn unsize_unique_trait<'a>(bcx: &'a Block<'a>,
+                               expr: &ast::Expr,
+                               datum: Datum<Expr>,
+                               k: &ty::UnsizeKind)
+                               -> DatumBlock<'a, Expr> {
+        let mut bcx = bcx;
+        let tcx = bcx.tcx();
+
+        let datum_ty = datum.ty;
+        let result_ty = ty::mk_uniq(tcx, ty::unsize_ty(tcx, datum_ty, k, expr.span));
+
+        let lval = unpack_datum!(bcx,
+                                 datum.to_lvalue_datum(bcx, "unsize_unique_trait", expr.id));
+
+        let scratch = rvalue_scratch_datum(bcx, result_ty, "__fat_ptr");
+        let llbox_ty = type_of::type_of(bcx.ccx(), datum_ty);
+        let base = PointerCast(bcx, get_dataptr(bcx, scratch.val), llbox_ty.ptr_to());
+        bcx = lval.store_to(bcx, base);
+
+        let vt = meth::vtable_ptr(bcx, expr.id, datum_ty);
+        let vt = PointerCast(bcx, vt, Type::vtable_ptr(bcx.ccx()));
+        Store(bcx, vt, get_len(bcx, scratch.val));
+
         DatumBlock::new(bcx, scratch.to_expr_datum())
     }
 

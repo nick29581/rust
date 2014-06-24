@@ -384,13 +384,6 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
 
             Some(adjustment) => {
                 match *adjustment {
-                    ty::AutoObject(..) => {
-                        // Implicity cast a concrete object to trait object.
-                        // Result is an rvalue.
-                        let expr_ty = if_ok!(self.expr_ty_adjusted(expr));
-                        Ok(self.cat_rvalue_node(expr.id(), expr.span(), expr_ty))
-                    }
-
                     ty::AutoAddEnv(..) => {
                         // Convert a bare fn to a closure by adding NULL env.
                         // Result is an rvalue.
@@ -657,10 +650,7 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
             Some(scope) => {
                 match ty::get(expr_ty).sty {
                     ty::ty_vec(_, Some(0)) => self.cat_rvalue(id, span, ty::ReStatic, expr_ty),
-                    _ => {
-                        debug!("nrc: {}; {}", ::util::ppaux::ty_to_str(self.tcx(), expr_ty), scope)
-                        self.cat_rvalue(id, span, ty::ReScope(scope), expr_ty)
-                    }
+                    _ => self.cat_rvalue(id, span, ty::ReScope(scope), expr_ty)
                 }
             }
             None => {
@@ -708,10 +698,11 @@ impl<'t,TYPER:Typer> MemCategorizationContext<'t,TYPER> {
                              deref_cnt: uint)
                              -> cmt {
         let adjustment = match self.typer.adjustments().borrow().find(&node.id()) {
-            Some(&ty::AutoObject(..)) => typeck::AutoObject,
+            Some(adj) if ty::adjust_is_object(adj) => typeck::AutoObject,
             _ if deref_cnt != 0 => typeck::AutoDeref(deref_cnt),
             _ => typeck::NoAdjustment
         };
+
         let method_call = typeck::MethodCall {
             expr_id: node.id(),
             adjustment: adjustment

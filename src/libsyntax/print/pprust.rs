@@ -129,6 +129,8 @@ pub fn print_crate<'a>(cm: &'a CodeMap,
 }
 
 pub fn to_str(f: |&mut State| -> IoResult<()>) -> String {
+    use std::raw::TraitObject;
+
     let mut s = rust_printer(box MemWriter::new());
     f(&mut s).unwrap();
     eof(&mut s.s).unwrap();
@@ -136,7 +138,8 @@ pub fn to_str(f: |&mut State| -> IoResult<()>) -> String {
         // FIXME(pcwalton): A nasty function to extract the string from an `io::Writer`
         // that we "know" to be a `MemWriter` that works around the lack of checked
         // downcasts.
-        let (_, wr): (uint, Box<MemWriter>) = mem::transmute_copy(&s.s.out);
+        let obj: TraitObject = mem::transmute_copy(&s.s.out);
+        let wr: Box<MemWriter> = mem::transmute(obj.data);
         let result =
             str::from_utf8_owned(Vec::from_slice(wr.get_ref())).unwrap();
         mem::forget(wr);

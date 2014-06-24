@@ -217,12 +217,6 @@ pub fn const_expr(cx: &CrateContext, e: &ast::Expr, is_local: bool) -> (ValueRef
                                 format!("unexpected static function: {:?}",
                                         store).as_slice())
                 }
-                ty::AutoObject(..) => {
-                    cx.sess()
-                      .span_unimpl(e.span,
-                                   "unimplemented const coercion to trait \
-                                    object");
-                }
                 ty::AutoDerefRef(ref adj) => {
                     let mut ty = ety;
                     // Save the last autoderef in case we can avoid it.

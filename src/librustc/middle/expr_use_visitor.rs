@@ -550,11 +550,10 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
             None => { }
             Some(adjustment) => {
                 match *adjustment {
-                    ty::AutoAddEnv(..) |
-                    ty::AutoObject(..) => {
-                        // Creating an object or closure consumes the
-                        // input and stores it into the resulting rvalue.
-                        debug!("walk_adjustment(AutoAddEnv|AutoObject)");
+                    ty::AutoAddEnv(..) => {
+                        // Creating a closure consumes the input and stores it
+                        // into the resulting rvalue.
+                        debug!("walk_adjustment(AutoAddEnv)");
                         let cmt_unadjusted =
                             return_if_err!(self.mc.cat_expr_unadjusted(expr));
                         self.delegate_consume(expr.id, expr.span, cmt_unadjusted);
@@ -568,12 +567,7 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                         match *opt_autoref {
                             None => { }
                             Some(ref r) => {
-                                let cmt_derefd = return_if_err!(
-                                    self.mc.cat_expr_autoderefd(expr, n));
-                                debug!("walk_adjustment: cmt_derefd={}",
-                                       cmt_derefd.repr(self.tcx()));
-
-                                self.walk_autoref(expr, r, cmt_derefd);
+                                self.walk_autoref(expr, r, n);
                             }
                         }
                     }
@@ -618,8 +612,28 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
     fn walk_autoref(&mut self,
                     expr: &ast::Expr,
                     autoref: &ty::AutoRef,
-                    cmt_derefd: mc::cmt) {
+                    n: uint) {
         debug!("walk_autoref expr={}", expr.repr(self.tcx()));
+
+        // Match for unique trait coercions first, since we don't need the
+        // call to cat_expr_autoderefd.
+        match *autoref {
+            ty::AutoUnsizeUniq(ty::UnsizeVtable(..)) |
+            ty::AutoUnsize(ty::UnsizeVtable(..)) => {
+                assert!(n == 1, format!("Expected exactly 1 deref with Uniq \
+                                         AutoRefs, found: {}", n));
+                let cmt_unadjusted =
+                    return_if_err!(self.mc.cat_expr_unadjusted(expr));
+                self.delegate_consume(expr.id, expr.span, cmt_unadjusted);
+                return;
+            }
+            _ => {}
+        }
+
+        let cmt_derefd = return_if_err!(
+            self.mc.cat_expr_autoderefd(expr, n));
+        debug!("walk_adjustment: cmt_derefd={}",
+               cmt_derefd.repr(self.tcx()));
 
         match *autoref {
             ty::AutoPtr(r, m, _) => {
@@ -629,19 +643,6 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                                      r,
                                      ty::BorrowKind::from_mutbl(m),
                                      AutoRef);
-                /*match *a {
-                    None | Some(box ref ty::AutoUnsize(..)) => {
-                        self.delegate.borrow(expr.id,
-                                             expr.span,
-                                             cmt_derefd,
-                                             r,
-                                             ty::BorrowKind::from_mutbl(m),
-                                             AutoRef);
-                    }
-                    Some(box ref a) => {
-                        self.walk_autoref(expr, a, cmt_derefd)
-                    }
-                }*/
             }
             ty::AutoBorrowObj(r, m) => {
                 let cmt_deref = self.mc.cat_deref_obj(expr, cmt_derefd);
@@ -652,7 +653,7 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                                      ty::BorrowKind::from_mutbl(m),
                                      AutoRef)
             }
-            ty::AutoUnsafe(_) | ty::AutoUnsizeUniq(_) | ty::AutoUnsize(_) => {}
+            ty::AutoUnsizeUniq(_) | ty::AutoUnsize(_) | ty::AutoUnsafe(_) => {}
         }
     }
 

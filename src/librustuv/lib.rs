@@ -40,6 +40,7 @@ via `close` and `delete` methods.
 #![crate_type = "rlib"]
 #![crate_type = "dylib"]
 
+#![allow(unknown_features)]
 #![feature(macro_rules, unsafe_destructor)]
 #![deny(unused_result, unused_must_use)]
 #![allow(visible_private_types)]
@@ -459,13 +460,14 @@ pub fn slice_to_uv_buf(v: &[u8]) -> Buf {
 // This function is full of lies!
 #[cfg(test)]
 fn local_loop() -> &'static mut uvio::UvIoFactory {
+    use std::raw::TraitObject;
     unsafe {
         mem::transmute({
             let mut task = Local::borrow(None::<Task>);
             let mut io = task.local_io().unwrap();
-            let (_vtable, uvio): (uint, &'static mut uvio::UvIoFactory) =
+            let obj: TraitObject =
                 mem::transmute(io.get());
-            uvio
+            obj.data
         })
     }
 }

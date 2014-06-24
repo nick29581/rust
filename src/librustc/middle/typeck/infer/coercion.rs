@@ -74,6 +74,7 @@ use middle::typeck::infer::sub::Sub;
 use middle::typeck::infer::to_str::InferStr;
 use middle::typeck::infer::resolve::try_resolve_tvar_shallow;
 use util::common::indenter;
+use util::ppaux;
 
 use syntax::abi;
 use syntax::ast::MutImmutable;
@@ -129,7 +130,7 @@ impl<'f> Coerce<'f> {
         // Note: does not attempt to resolve type variables we encounter.
         // See above for details.
         match ty::get(b).sty {
-            ty::ty_rptr(r_b, mt_b) => {
+            ty::ty_rptr(_, mt_b) => {
                 match ty::get(mt_b.ty).sty {
                     ty::ty_str => {
                         return self.unpack_actual_value(a, |sty_a| {
@@ -137,19 +138,9 @@ impl<'f> Coerce<'f> {
                         });
                     }
 
-                    ty::ty_trait(box ty::TyTrait { def_id, ref substs, bounds }) => {
+                    ty::ty_trait(..) => {
                         let result = self.unpack_actual_value(a, |sty_a| {
-                            match *sty_a {
-                                ty::ty_rptr(_, mt_a) => match ty::get(mt_a.ty).sty {
-                                    ty::ty_trait(..) => {
-                                        self.coerce_borrowed_object(a, sty_a, b, mt_b.mutbl)
-                                    }
-                                    _ => self.coerce_object(a, sty_a, b, def_id, substs,
-                                                            ty::RegionTraitStore(r_b, mt_b.mutbl),
-                                                            bounds)
-                                },
-                                _ => self.coerce_borrowed_object(a, sty_a, b, mt_b.mutbl)
-                            }
+                            self.coerce_borrowed_object(a, sty_a, b, mt_b.mutbl)
                         });
 
                         match result {
@@ -164,31 +155,6 @@ impl<'f> Coerce<'f> {
                         });
                     }
                 };
-            }
-
-            ty::ty_uniq(t_b) => {
-                match ty::get(t_b).sty {
-                    ty::ty_trait(box ty::TyTrait { def_id, ref substs, bounds }) => {
-                        let result = self.unpack_actual_value(a, |sty_a| {
-                            match *sty_a {
-                                ty::ty_uniq(t_a) => match ty::get(t_a).sty {
-                                    ty::ty_trait(..) => {
-                                        Err(ty::terr_mismatch)
-                                    }
-                                    _ => self.coerce_object(a, sty_a, b, def_id, substs,
-                                                            ty::UniqTraitStore, bounds)
-                                },
-                                _ => Err(ty::terr_mismatch)
-                            }
-                        });
-
-                        match result {
-                            Ok(t) => return Ok(t),
-                            Err(..) => {}
-                        }
-                    }
-                    _ => {}
-                }
             }
 
             ty::ty_closure(box ty::ClosureTy {
@@ -321,6 +287,7 @@ impl<'f> Coerce<'f> {
 
     // &[T, ..n] or &mut [T, ..n] -> &[T]
     // or &mut [T, ..n] -> &mut [T]
+    // or &Concrete -> &Trait, etc.
     fn coerce_unsized(&self,
                       a: ty::t,
                       sty_a: &ty::sty,
@@ -342,7 +309,7 @@ impl<'f> Coerce<'f> {
             (&ty::ty_uniq(t_a), &ty::ty_rptr(_, mt_b)) |
             (&ty::ty_rptr(_, ty::mt{ty: t_a, ..}), &ty::ty_rptr(_, mt_b)) => {
                 self.unpack_actual_value(t_a, |sty_a| {
-                    match self.unsize_ty(sty_a) {
+                    match self.unsize_ty(sty_a, mt_b.ty) {
                         Some((ty, kind)) => {
                             let coercion = Coercion(self.get_ref().trace.clone());
                             let r_borrow = self.get_ref().infcx.next_region_var(coercion);
@@ -362,9 +329,9 @@ impl<'f> Coerce<'f> {
                     }
                 })
             }
-            (&ty::ty_uniq(t_a), &ty::ty_uniq(_)) => {
+            (&ty::ty_uniq(t_a), &ty::ty_uniq(t_b)) => {
                 self.unpack_actual_value(t_a, |sty_a| {
-                    match self.unsize_ty(sty_a) {
+                    match self.unsize_ty(sty_a, t_b) {
                         Some((ty, kind)) => {
                             let ty = ty::mk_uniq(self.get_ref().infcx.tcx, ty);
                             if_ok!(self.get_ref().infcx.try(|| sub.tys(ty, b)));
@@ -386,95 +353,72 @@ impl<'f> Coerce<'f> {
     // Takes a type and returns an unsized version along with the adjustment
     // performed to unsize it.
     // E.g., `[T, ..n]` -> `([T], UnsizeLength(n))`
-    fn unsize_ty(&self, sty_a: &ty::sty)
+    fn unsize_ty(&self,
+                 sty_a: &ty::sty,
+                 ty_b: ty::t)
                  -> Option<(ty::t, ty::UnsizeKind)> {
         debug!("unsize_ty(sty_a={:?}", sty_a);
 
         let tcx = self.get_ref().infcx.tcx;
-        match *sty_a {
-            ty::ty_vec(t_a, Some(len)) => {
-                let ty = ty::mk_vec(tcx, t_a, None);
-                Some((ty, ty::UnsizeLength(len)))
-            }
-            ty::ty_struct(did, ref substs) => {
-                // See if we can unsize the struct by unsizing one of its actual
-                // type parameters. This must only have the effect of unsizing
-                // the last field (the type system should ensure that only the
-                // the last field is unsized, we have to check only that it _is_
-                // unsized).
 
-                // Find the type of the last field in the struct and see if we
-                // can unsize it.
-                let fields = ty::lookup_struct_fields(tcx, did);
-                if fields.len() == 0 {
-                    return None;
+        self.unpack_actual_value(ty_b, |sty_b|
+            match (sty_a, sty_b) {
+                (&ty::ty_vec(t_a, Some(len)), _) => {
+                    let ty = ty::mk_vec(tcx, t_a, None);
+                    Some((ty, ty::UnsizeLength(len)))
                 }
-                let last_field = fields.get(fields.len()-1);
-                let field_ty = ty::lookup_field_type(tcx, did, last_field.id, substs);
+                (&ty::ty_trait(..), &ty::ty_trait(..)) => None,
+                (_, &ty::ty_trait(box ty::TyTrait { def_id, ref substs, bounds })) => {
+                    let ty = ty::mk_trait(tcx,
+                                          def_id,
+                                          substs.clone(),
+                                          bounds);
+                    Some((ty, ty::UnsizeVtable(bounds, def_id, substs.clone())))
+                }
+                (&ty::ty_struct(did_a, ref substs_a), &ty::ty_struct(did_b, ref substs_b))
+                  if did_a == did_b => {
+                    // Try unsizing each type param in turn to see if we end up with ty_b.
+                    let ty_substs_a = substs_a.types.get_vec(subst::TypeSpace);
+                    let ty_substs_b = substs_b.types.get_vec(subst::TypeSpace);
+                    assert!(ty_substs_a.len() == ty_substs_b.len());
 
-                self.unpack_actual_value(field_ty, |field_sty|
-                    match self.unsize_ty(field_sty) {
-                        Some((field_ty, field_kind)) => {
-                            // The last field can be unsized, now we have to find a
-                            // substitution which gives us the correct field type.
-                            // We do this by trying to unsize each actual type
-                            // parameter in substs and seeing if that gets us the
-                            // right type for the last field.
-                            let mut new_substs: Option<subst::Substs> = None;
-                            let mut index = 0u;
-                            let ty_substs = substs.types.get_vec(subst::TypeSpace);
-                            for (i, tp) in ty_substs.iter().enumerate() {
-                                let should_break = self.unpack_actual_value(*tp, |tp|
-                                    match self.unsize_ty(tp) {
-                                        Some((utp, _)) => {
-                                            let mut unsized_substs = substs.clone();
-                                            *unsized_substs.types.get_mut_vec(subst::TypeSpace)
-                                                .get_mut(i) = utp;
-                                            let subst_field_ty = ty::lookup_field_type(tcx,
-                                                                   did,
-                                                                   last_field.id,
-                                                                   &unsized_substs);
-                                            let subst_sty = &ty::get(subst_field_ty).sty;
-                                            let field_sty = &ty::get(field_ty).sty;
-                                            if *subst_sty == *field_sty {
-                                                new_substs = Some(unsized_substs);
-                                                index = i;
-                                                true
-                                            } else {
-                                                false
-                                            }
-                                        }
-                                        None => false
-                                    }
-                                );
-                                if should_break {
+                    let sub = Sub(self.get_ref().clone());
+
+                    let mut result = None;
+                    let tps = ty_substs_a.iter().zip(ty_substs_b.iter()).enumerate();
+                    for (i, (tp_a, tp_b)) in tps {
+                        if self.get_ref().infcx.try(|| sub.tys(*tp_a, *tp_b)).is_ok() {
+                            continue;
+                        }
+                        match self.unpack_actual_value(*tp_a, |tp| self.unsize_ty(tp, *tp_b)) {
+                            Some((new_tp, k)) => {
+                                // Check that the whole types match.
+                                let mut new_substs = substs_a.clone();
+                                *new_substs.types.get_mut_vec(subst::TypeSpace).get_mut(i) = new_tp;
+                                let ty = ty::mk_struct(tcx, did_a, new_substs);
+                                if self.get_ref().infcx.try(|| sub.tys(ty, ty_b)).is_err() {
+                                    debug!("Unsized type parameter '{}', but still \
+                                            could not match types {} and {}",
+                                           ppaux::ty_to_str(tcx, *tp_a),
+                                           ppaux::ty_to_str(tcx, ty),
+                                           ppaux::ty_to_str(tcx, ty_b));
+                                    // We can only unsize a single type parameter, so
+                                    // if we unsize one and it doesn't give us the
+                                    // type we want, then we won't succeed later.
                                     break;
                                 }
-                            }
 
-                            match new_substs {
-                                Some(substs) => {
-                                    let ty = ty::mk_struct(tcx, did, substs);
-                                    Some((ty, ty::UnsizeStruct(box field_kind, index)))
-                                }
-
-                                // This is a bit of an odd case: the last field _can_
-                                // be unsized, but there is no type parameter that
-                                // can be unsized to have that effect. In this case,
-                                // we cannot unsize the struct.
-                                // Example: struct `S { fld: [int, ..4] }`
-                                // We could unsize to S' where the type of `fld` is
-                                // `[int]`, but that would be a different struct.
-                                None => None
+                                result = Some((ty, ty::UnsizeStruct(box k, i)));
+                                break;
                             }
+                            None => {}
                         }
-                        // Can't unsize the last field's type, so no coercion to do
-                        _ => None
                     }
-                )
+                    result
+                }
+                _ => None
             }
-            _ => None
-        }
+        )
     }
 
     fn coerce_borrowed_object(&self,
@@ -598,22 +542,5 @@ impl<'f> Coerce<'f> {
             autoderefs: 1,
             autoref: Some(ty::AutoUnsafe(mt_b.mutbl))
         })))
-    }
-
-    pub fn coerce_object(&self,
-                         a: ty::t,
-                         sty_a: &ty::sty,
-                         b: ty::t,
-                         trait_def_id: ast::DefId,
-                         trait_substs: &subst::Substs,
-                         trait_store: ty::TraitStore,
-                         bounds: ty::BuiltinBounds) -> CoerceResult {
-
-        debug!("coerce_object(a={}, sty_a={:?}, b={})",
-               a.inf_str(self.get_ref().infcx), sty_a,
-               b.inf_str(self.get_ref().infcx));
-
-        Ok(Some(ty::AutoObject(trait_store, bounds,
-                               trait_def_id, trait_substs.clone())))
     }
 }

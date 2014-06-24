@@ -10,7 +10,7 @@
 
 
 use middle::ty;
-use middle::ty::{AutoDerefRef, AutoObject, ParamTy};
+use middle::ty::{AutoDerefRef, ParamTy};
 use middle::ty_fold::TypeFolder;
 use middle::typeck::astconv::AstConv;
 use middle::typeck::check::{FnCtxt, impl_self_ty};
@@ -303,7 +303,6 @@ fn search_for_vtable(vcx: &VtableContext,
                      trait_ref: Rc<ty::TraitRef>,
                      is_early: bool)
                      -> Option<vtable_origin> {
-    debug!("nrc - search_for_vtable");
     let tcx = vcx.tcx();
 
     let mut found = Vec::new();
@@ -557,7 +556,6 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
                   ty::ty_trait(box ty::TyTrait {
                       def_id: target_def_id, substs: ref target_substs, ..
                   }) => {
-                      debug!("nrc correct path");
                       let typ = match &ty::get(src_ty).sty {
                           &ty::ty_uniq(typ) => typ,
                           &ty::ty_rptr(_, mt) => mt.ty,
@@ -597,6 +595,7 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
                       if !is_early {
                           let mut r = VecPerParamSpace::empty();
                           r.push(subst::SelfSpace, vtables);
+                          debug!("nrc - record vtable");
                           insert_vtables(fcx, key, r);
                       }
 
@@ -604,7 +603,6 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
                       // regions.
                       match (&ty::get(src_ty).sty, &ty::get(target_ty).sty) {
                           (&ty::ty_rptr(ra, _), &ty::ty_rptr(rb, _)) => {
-                              debug!("nrc - make subr");
                               infer::mk_subr(fcx.infcx(),
                                              false,
                                              infer::RelateObjectBound(ex.span),
@@ -696,6 +694,7 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
           debug!("vtable resolution on expr {}", ex.repr(fcx.tcx()));
           let target_ty = fcx.expr_ty(ex);
           let key = MethodCall::expr(ex.id);
+          debug!("nrc - path for casts");
           resolve_object_cast(&**src, target_ty, key);
       }
       _ => ()
@@ -705,7 +704,37 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
     match fcx.inh.adjustments.borrow().find(&ex.id) {
         Some(adjustment) => {
             match *adjustment {
+                AutoDerefRef(ty::AutoDerefRef{ autoderefs: 1,
+                                               autoref: Some(
+                                                  ty::AutoPtr(r, m, Some(
+                                                    box ty::AutoUnsize(
+                                                      ty::UnsizeVtable(bounds,
+                                                                       id,
+                                                                       ref substs)))))}) => {
+                    let tr_type = ty::mk_trait(fcx.tcx(),
+                                               id,
+                                               substs.clone(),
+                                               bounds);
+                    let object_ty = ty::mk_rptr(fcx.tcx(), r, ty::mt {ty: tr_type, mutbl: m});
+                    let key = MethodCall::autoobject(ex.id);
+                    resolve_object_cast(ex, object_ty, key);
+                }
+                AutoDerefRef(ty::AutoDerefRef{ autoderefs: 1,
+                                               autoref: Some(
+                                                  ty::AutoUnsizeUniq(
+                                                    ty::UnsizeVtable(bounds,
+                                                                     id,
+                                                                     ref substs)))}) => {
+                    let tr_type = ty::mk_trait(fcx.tcx(),
+                                               id,
+                                               substs.clone(),
+                                               bounds);
+                    let object_ty = ty::mk_uniq(fcx.tcx(), tr_type);
+                    let key = MethodCall::autoobject(ex.id);
+                    resolve_object_cast(ex, object_ty, key);
+                }
                 AutoDerefRef(ref adj) => {
+                    assert!(!ty::adjust_is_object(adjustment));
                     for autoderef in range(0, adj.autoderefs) {
                         let method_call = MethodCall::autoderef(ex.id, autoderef);
                         match fcx.inh.method_map.borrow().find(&method_call) {
@@ -726,31 +755,9 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
                         }
                     }
                 }
-                AutoObject(store,
-                           bounds,
-                           def_id,
-                           ref substs) => {
-                    debug!("doing trait adjustment for expr {} {} \
-                            (early? {})",
-                           ex.id,
-                           ex.repr(fcx.tcx()),
-                           is_early);
-
-                    let trait_ty = ty::mk_trait(cx.tcx,
-                                                def_id,
-                                                substs.clone(),
-                                                bounds);
-                    let object_ty = match store {
-                        ty::UniqTraitStore => ty::mk_uniq(cx.tcx, trait_ty),
-                        ty::RegionTraitStore(r, m) => {
-                            ty::mk_rptr(cx.tcx, r, ty::mt {ty: trait_ty, mutbl: m})
-                        }
-                    };
-
-                    let key = MethodCall::autoobject(ex.id);
-                    resolve_object_cast(ex, object_ty, key);
+                _ => {
+                    assert!(!ty::adjust_is_object(adjustment));
                 }
-                _ => {}
             }
         }
         None => {}

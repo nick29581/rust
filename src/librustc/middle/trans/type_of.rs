@@ -181,7 +181,7 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
         None => ()
     }
 
-    debug!("type_of {} {:?}", t.repr(cx.tcx()), t);
+    debug!("type_of {} {:?}", t.repr(cx.tcx()), ty::get(t).sty);
 
     // Replace any typedef'd types with their equivalent non-typedef
     // type. This ensures that all LLVM nominal types that contain
@@ -288,7 +288,9 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
               let p_ty = Type::i8p(cx);
               Type::struct_(cx, [p_ty, type_of_unsize_info(cx)], false)
           }
-          _ => cx.sess().bug("ty_open with sized type")
+          ty::ty_trait(..) => Type::opaque_trait(cx),
+          _ => cx.sess().bug(format!("ty_open with sized type: {}",
+                                     ppaux::ty_to_str(cx.tcx(), t)).as_slice())
       },
 
       ty::ty_trait(..) => cx.sess().bug("type_of with unsized ty_trait"),

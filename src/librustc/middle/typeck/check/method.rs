@@ -990,8 +990,8 @@ impl<'a> LookupContext<'a> {
             Some(expr) => Some(expr.id),
             None => {
                 assert_eq!(autoderefs, 0);
-                assert_eq!(kind(ty::ReEmpty, ast::MutImmutable),
-                           ty::AutoPtr(ty::ReEmpty, ast::MutImmutable, None));
+                assert!(kind(ty::ReEmpty, ast::MutImmutable) ==
+                        ty::AutoPtr(ty::ReEmpty, ast::MutImmutable, None));
                 None
             }
         };

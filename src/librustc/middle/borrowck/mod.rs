@@ -357,7 +357,7 @@ impl<'a> BorrowckCtxt<'a> {
                     autoderefs: autoderefs, ..}) => {
                 self.mc().cat_expr_autoderefd(expr, autoderefs)
             }
-            ty::AutoAddEnv(..) | ty::AutoObject(..) => {
+            ty::AutoAddEnv(..) => {
                 // no autoderefs
                 self.mc().cat_expr_unadjusted(expr)
             }

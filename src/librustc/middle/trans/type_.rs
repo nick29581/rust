@@ -232,9 +232,12 @@ impl Type {
         ], false)
     }
 
+    pub fn vtable_ptr(ccx: &CrateContext) -> Type {
+        Type::glue_fn(ccx, Type::i8p(ccx)).ptr_to().ptr_to()
+    }
+
     pub fn opaque_trait(ccx: &CrateContext) -> Type {
-        let vtable = Type::glue_fn(ccx, Type::i8p(ccx)).ptr_to().ptr_to();
-        Type::struct_(ccx, [vtable, Type::i8p(ccx)], false)
+        Type::struct_(ccx, [Type::i8p(ccx), Type::vtable_ptr(ccx)], false)
     }
 
     pub fn kind(&self) -> TypeKind {

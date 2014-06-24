@@ -271,13 +271,13 @@ pub fn check_expr(cx: &mut Context, e: &Expr) {
     // Search for auto-adjustments to find trait coercions.
     match cx.tcx.adjustments.borrow().find(&e.id) {
         Some(adjustment) => {
-            match *adjustment {
-                ty::AutoObject(..) => {
+            match adjustment {
+                adj if ty::adjust_is_object(adj) => {
                     let source_ty = ty::expr_ty(cx.tcx, e);
                     let target_ty = ty::expr_ty_adjusted(cx.tcx, e);
                     check_trait_cast(cx, source_ty, target_ty, e.span);
                 }
-                ty::AutoAddEnv(..) | ty::AutoDerefRef(..) => {}
+                _ => {}
             }
         }
         None => {}
@@ -460,10 +460,11 @@ pub fn check_trait_cast_bounds(cx: &Context, sp: Span, ty: ty::t,
                                bounds: ty::BuiltinBounds) {
     check_builtin_bounds(cx, ty, bounds, |missing| {
         cx.tcx.sess.span_err(sp,
-            format!("cannot pack type `{}`, which does not fulfill \
-                     `{}`, as a trait bounded by {}",
-                    ty_to_str(cx.tcx, ty), missing.user_string(cx.tcx),
-                    bounds.user_string(cx.tcx)).as_slice());
+            format!("cannot pack type `{}` as a trait bounded by {} because the \
+                     type does not fulfill `{}`",
+                    ty_to_str(cx.tcx, ty),
+                    bounds.user_string(cx.tcx),
+                    missing.user_string(cx.tcx)).as_slice());
     });
 }
 

@@ -205,31 +205,28 @@ pub enum Variance {
 #[deriving(Clone)]
 pub enum AutoAdjustment {
     AutoAddEnv(ty::TraitStore),
-    AutoDerefRef(AutoDerefRef),
-    AutoObject(ty::TraitStore,
-               ty::BuiltinBounds,
-               ast::DefId, /* Trait ID */
-               subst::Substs /* Trait substitutions */)
+    AutoDerefRef(AutoDerefRef)
 }
 
-#[deriving(Clone, Decodable, Encodable, PartialEq, Show)]
+#[deriving(Clone, PartialEq)]
 pub enum UnsizeKind {
     // [T, ..n] -> [T], the uint field is n.
     UnsizeLength(uint),
     // An unsize coercion applied to the tail field of a struct.
     // The uint is the index of the type parameter which is unsized.
     UnsizeStruct(Box<UnsizeKind>, uint),
-    UnsizeVtable, // Hopefully this will replace AutoObject; needs params.
-    UnisizeNone   // For virtual struct pointers.
+    UnsizeVtable(ty::BuiltinBounds,
+                 ast::DefId, /* Trait ID */
+                 subst::Substs /* Trait substitutions */)
 }
 
-#[deriving(Clone, Decodable, Encodable)]
+#[deriving(Clone)]
 pub struct AutoDerefRef {
     pub autoderefs: uint,
     pub autoref: Option<AutoRef>
 }
 
-#[deriving(Clone, Decodable, Encodable, PartialEq, Show)]
+#[deriving(Clone, PartialEq)]
 pub enum AutoRef {
     /// Convert from T or ~T to &T or ~[T]/&[T] to &[T]
     /// Value or thin pointer to thin pointer or fat pointer to fat pointer
@@ -249,8 +246,63 @@ pub enum AutoRef {
 
     /// Convert from Box<Trait>/&Trait to &Trait
     /// Fat pointer to fat pointer (objects)
+    // TODO kill this too!
     AutoBorrowObj(Region, ast::Mutability),
 }
+
+// Ugly little helper function. The bool in the returned tuple is true if
+// there is unsize to trait object at the bottom of the adjustment. If that
+// is surrounded by an AutoPtr, then we also return the region of the AutoPtr.
+// The second bool is true if the adjustment is unique (yuck).
+fn autoref_object_region(autoref: &AutoRef) -> (bool, bool, Option<Region>) {
+    match autoref {
+        &AutoUnsize(ref k) => match k {
+            &UnsizeVtable(..) => (true, false, None),
+            _ => (false, false, None)
+        },
+        &AutoUnsizeUniq(ref k) => match k {
+            &UnsizeVtable(..) => (true, true, None),
+            _ => (false, false, None)
+        },
+        &AutoPtr(adj_r, _, Some(box ref autoref)) => {
+            let (b, u, r) = autoref_object_region(autoref);
+            if r.is_some() || u {
+                (b, u, r)
+            } else {
+                (b, u, Some(adj_r))
+            }
+        }
+        _ => (false, false, None)
+    }
+}
+
+// If the adjustment introduces a borrowed reference to a trait object, then
+// returns the region of the borrowed reference.
+pub fn adjusted_object_region(adj: &AutoAdjustment) -> Option<Region> {
+    match adj {
+        &AutoDerefRef(AutoDerefRef{autoref: Some(ref autoref), ..}) => {
+            let (b, _, r) = autoref_object_region(autoref);
+            if b {
+                r
+            } else {
+                None
+            }
+        }
+        _ => None
+    }
+}
+
+// Returns true if there is a trait cast at the bottom of the adjustment.
+pub fn adjust_is_object(adj: &AutoAdjustment) -> bool {
+    match adj {
+        &AutoDerefRef(AutoDerefRef{autoref: Some(ref autoref), ..}) => {
+            let (b, _, _) = autoref_object_region(autoref);
+            b
+        }
+        _ => false
+    }
+}
+
 
 /// A restriction that certain types must be the same size. The use of
 /// `transmute` gives rise to these restrictions.
@@ -2892,22 +2944,6 @@ pub fn adjust_ty(cx: &ctxt,
                         Some(ref autoref) => adjust_for_autoref(cx, span, adjusted_ty, autoref)
                     }
                 }
-
-                AutoObject(store, bounds, def_id, ref substs) => {
-
-                    let tr = mk_trait(cx, def_id, substs.clone(), bounds);
-                    match store {
-                        UniqTraitStore => {
-                            mk_uniq(cx, tr)
-                        }
-                        RegionTraitStore(r, m) => {
-                            mk_rptr(cx, r, mt {
-                                ty: tr,
-                                mutbl: m
-                            })
-                        }
-                    }
-                }
             }
         }
         None => unadjusted_ty
@@ -2999,7 +3035,9 @@ pub fn unsize_ty(cx: &ctxt,
                                   format!("UnsizeStruct with bad sty: {}",
                                           ty_to_str(cx, ty)).as_slice())
         },
-        _ => cx.sess.span_bug(span, "Unsupported autoderef in unsize_ty")
+        &UnsizeVtable(bounds, def_id, ref substs) => {
+            mk_trait(cx, def_id, substs.clone(), bounds)
+        }
     }
 }
 
