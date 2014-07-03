@@ -493,22 +493,6 @@ fn check_fn<'a>(ccx: &'a CrateCtxt<'a>,
     }
 
     check_block_with_expected(&fcx, body, Some(ret_ty));
-    // We unify the tail expr's type with the
-    // function result type, if there is a tail expr.
-    /*match body.expr {
-        Some(tail_expr) => {
-            // Special case: we print a special error if there appears
-            // to be do-block/for-loop confusion
-            if !ty::type_is_error(tail_expr) {
-                demand::coerce_with_fn(&fcx, tail_expr.span,
-                    fcx.ret_ty, tail_expr,
-                    |sp, e, a, s| {
-                        fcx.report_mismatched_return_types(sp, e, a, s);
-                    });
-            }
-        }
-        None => {}
-    }*/
 
     for (input, arg) in decl.inputs.iter().zip(arg_tys.iter()) {
         fcx.write_ty(input.id, *arg);
@@ -2608,75 +2592,6 @@ fn check_expr_with_unifier(fcx: &FnCtxt,
     let tcx = fcx.ccx.tcx;
     let id = expr.id;
     match expr.node {
-        /*ast::ExprVstore(ev, vst) => {
-            let typ = match ev.node {
-                ast::ExprVec(ref args) => {
-                    let mutability = match vst {
-                        ast::ExprVstoreMutSlice => ast::MutMutable,
-                        _ => ast::MutImmutable,
-                    };
-                    let mut any_error = false;
-                    let mut any_bot = false;
-                    let t: ty::t = fcx.infcx().next_ty_var();
-                    for e in args.iter() {
-                        check_expr_has_type(fcx, &**e, t);
-                        let arg_t = fcx.expr_ty(&**e);
-                        if ty::type_is_error(arg_t) {
-                            any_error = true;
-                        }
-                        else if ty::type_is_bot(arg_t) {
-                            any_bot = true;
-                        }
-                    }
-                    if any_error {
-                        ty::mk_err()
-                    } else if any_bot {
-                        ty::mk_bot()
-                    } else {
-                        ast_expr_vstore_to_ty(fcx, &*ev, vst, ||
-                            ty::mt{ ty: ty::mk_vec(tcx,
-                                                   t,
-                                                   None),
-                                                   mutbl: mutability })
-                    }
-                }
-                ast::ExprRepeat(ref element, ref count_expr) => {
-                    check_expr_with_hint(fcx, &**count_expr, ty::mk_uint());
-                    let _ = ty::eval_repeat_count(fcx, &**count_expr);
-                    let mutability = match vst {
-                        ast::ExprVstoreMutSlice => ast::MutMutable,
-                        _ => ast::MutImmutable,
-                    };
-                    let t = fcx.infcx().next_ty_var();
-                    check_expr_has_type(fcx, &**element, t);
-                    let arg_t = fcx.expr_ty(&**element);
-                    if ty::type_is_error(arg_t) {
-                        ty::mk_err()
-                    } else if ty::type_is_bot(arg_t) {
-                        ty::mk_bot()
-                    } else {
-                        ast_expr_vstore_to_ty(fcx, &*ev, vst, ||
-                            ty::mt{ ty: ty::mk_vec(tcx,
-                                                   t,
-                                                   None),
-                                                   mutbl: mutability})
-                    }
-                }
-                ast::ExprLit(_) => {
-                    let error = if vst == ast::ExprVstoreSlice {
-                        "`&\"string\"` has been removed; use `\"string\"` instead"
-                    } else {
-                        "`box \"string\"` has been removed; use `\"string\".to_string()` instead"
-                    };
-                    tcx.sess.span_err(expr.span, error);
-                    ty::mk_err()
-                }
-                _ => tcx.sess.span_bug(expr.span, "vstore modifier on non-sequence"),
-            };
-            fcx.write_ty(ev.id, typ);
-            fcx.write_ty(id, typ);
-        }*/
-
       ast::ExprBox(ref place, ref subexpr) => {
           check_expr(fcx, &**place);
           check_expr(fcx, &**subexpr);
@@ -4301,41 +4216,6 @@ pub fn type_is_c_like_enum(fcx: &FnCtxt, sp: Span, typ: ty::t) -> bool {
     let typ_s = structurally_resolved_type(fcx, sp, typ);
     return ty::type_is_c_like_enum(fcx.ccx.tcx, typ_s);
 }
-
-/*pub fn ast_expr_vstore_to_ty(fcx: &FnCtxt,
-                             e: &ast::Expr,
-                             v: ast::ExprVstore,
-                             mk_inner: || -> ty::mt)
-                             -> ty::t {
-    match v {
-        ast::ExprVstoreUniq => ty::mk_uniq(fcx.ccx.tcx, mk_inner().ty),
-        ast::ExprVstoreSlice | ast::ExprVstoreMutSlice => {
-            match e.node {
-                ast::ExprLit(..) => {
-                    // string literals and *empty slices* live in static memory
-                    ty::mk_rptr(fcx.ccx.tcx, ty::ReStatic, mk_inner())
-                }
-                ast::ExprVec(ref elements) if elements.len() == 0 => {
-                    // string literals and *empty slices* live in static memory
-                    ty::mk_rptr(fcx.ccx.tcx, ty::ReStatic, mk_inner())
-                }
-                ast::ExprRepeat(..) |
-                ast::ExprVec(..) => {
-                    // vector literals are temporaries on the stack
-                    match fcx.tcx().region_maps.temporary_scope(e.id) {
-                        Some(scope) => ty::mk_rptr(fcx.ccx.tcx, ty::ReScope(scope), mk_inner()),
-                        None => ty::mk_rptr(fcx.ccx.tcx, ty::ReStatic, mk_inner()),
-                    }
-                }
-                _ => {
-                    fcx.ccx.tcx.sess.span_bug(e.span,
-                                              "vstore with unexpected \
-                                               contents")
-                }
-            }
-        }
-    }
-}*/
 
 // Returns true if b contains a break that can exit from b
 pub fn may_break(cx: &ty::ctxt, id: ast::NodeId, b: ast::P<ast::Block>) -> bool {

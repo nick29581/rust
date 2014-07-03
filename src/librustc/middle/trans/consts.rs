@@ -453,10 +453,6 @@ fn const_expr_unadjusted(cx: &CrateContext, e: &ast::Expr,
                                                       ty_to_str(cx.tcx(), bt)).as_slice())
                   },
                   ty::ty_rptr(_, mt) => match ty::get(mt.ty).sty {
-                      /*ty::ty_vec(_, None) | ty::ty_str => {
-                          let e1 = const_get_elt(cx, bv, [0]);
-                          (const_deref_ptr(cx, e1), const_get_elt(cx, bv, [1]))
-                      },*/
                       ty::ty_vec(_, Some(u)) => {
                           (const_deref_ptr(cx, bv), C_uint(cx, u))
                       },

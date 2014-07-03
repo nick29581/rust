@@ -595,7 +595,6 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
                       if !is_early {
                           let mut r = VecPerParamSpace::empty();
                           r.push(subst::SelfSpace, vtables);
-                          debug!("nrc - record vtable");
                           insert_vtables(fcx, key, r);
                       }
 
@@ -694,7 +693,6 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
           debug!("vtable resolution on expr {}", ex.repr(fcx.tcx()));
           let target_ty = fcx.expr_ty(ex);
           let key = MethodCall::expr(ex.id);
-          debug!("nrc - path for casts");
           resolve_object_cast(&**src, target_ty, key);
       }
       _ => ()
