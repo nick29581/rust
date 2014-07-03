@@ -420,7 +420,6 @@ pub fn super_fold_autoref<T:TypeFolder>(this: &mut T,
             ty::AutoPtr(this.fold_region(r), m, Some(box super_fold_autoref(this, a.clone())))
         }
         ty::AutoUnsafe(m) => ty::AutoUnsafe(m),
-        ty::AutoBorrowObj(r, m) => ty::AutoBorrowObj(this.fold_region(r), m),
         ty::AutoUnsize(ref k) => ty::AutoUnsize(k.clone()),
         ty::AutoUnsizeUniq(ref k) => ty::AutoUnsizeUniq(k.clone()),
     }

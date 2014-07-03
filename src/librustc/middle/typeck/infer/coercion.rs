@@ -65,7 +65,7 @@ we may want to adjust precisely when coercions occur.
 */
 
 use middle::subst;
-use middle::ty::{AutoPtr, AutoBorrowObj, AutoDerefRef, AutoUnsize};
+use middle::ty::{AutoPtr, AutoDerefRef, AutoUnsize};
 use middle::ty::{mt};
 use middle::ty;
 use middle::typeck::infer::{CoerceResult, resolve_type, Coercion};
@@ -377,6 +377,7 @@ impl<'f> Coerce<'f> {
                 }
                 (&ty::ty_struct(did_a, ref substs_a), &ty::ty_struct(did_b, ref substs_b))
                   if did_a == did_b => {
+                    debug!("unsizing a struct");
                     // Try unsizing each type param in turn to see if we end up with ty_b.
                     let ty_substs_a = substs_a.types.get_vec(subst::TypeSpace);
                     let ty_substs_b = substs_b.types.get_vec(subst::TypeSpace);
@@ -385,7 +386,7 @@ impl<'f> Coerce<'f> {
                     let sub = Sub(self.get_ref().clone());
 
                     let mut result = None;
-                    let tps = ty_substs_a.iter().zip(ty_substs_b.iter()).enumerate();
+                    let mut tps = ty_substs_a.iter().zip(ty_substs_b.iter()).enumerate();
                     for (i, (tp_a, tp_b)) in tps {
                         if self.get_ref().infcx.try(|| sub.tys(*tp_a, *tp_b)).is_ok() {
                             continue;
@@ -457,8 +458,8 @@ impl<'f> Coerce<'f> {
 
         if_ok!(self.subtype(a_borrowed, b));
         Ok(Some(AutoDerefRef(AutoDerefRef {
-            autoderefs: 0,
-            autoref: Some(AutoBorrowObj(r_a, b_mutbl))
+            autoderefs: 1,
+            autoref: Some(AutoPtr(r_a, b_mutbl, None))
         })))
     }
 

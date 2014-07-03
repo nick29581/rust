@@ -63,7 +63,7 @@ use middle::trans::inline;
 use middle::trans::tvec;
 use middle::trans::type_of;
 use middle::ty::struct_fields;
-use middle::ty::{AutoBorrowObj, AutoDerefRef, AutoAddEnv, AutoUnsafe};
+use middle::ty::{AutoDerefRef, AutoAddEnv, AutoUnsafe};
 use middle::ty::{AutoPtr};
 use middle::ty;
 use middle::typeck;
@@ -255,10 +255,6 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
                 debug!("  AutoUnsizeUniq(UnsizeVtable)");
                 unpack_datum!(bcx, unsize_unique_trait(bcx, expr, datum, k))
             }
-            &AutoBorrowObj(..) => {
-                debug!("  AutoBorrowObj");
-                unpack_datum!(bcx, auto_borrow_obj(bcx, expr, datum))
-            }
             _ => bcx.tcx().sess.span_bug(expr.span, "unsupported adjustment")
         };
 
@@ -448,19 +444,6 @@ fn apply_adjustments<'a>(bcx: &'a Block<'a>,
         let fn_ptr = datum.to_llscalarish(bcx);
         let def = ty::resolve_expr(bcx.tcx(), expr);
         closure::make_closure_from_bare_fn(bcx, closure_ty, def, fn_ptr)
-    }
-
-    fn auto_borrow_obj<'a>(bcx: &'a Block<'a>,
-                           expr: &ast::Expr,
-                           source_datum: Datum<Expr>)
-                           -> DatumBlock<'a, Expr> {
-        let tcx = bcx.tcx();
-        let target_obj_ty = expr_ty_adjusted(bcx, expr);
-        debug!("auto_borrow_obj(target={})", target_obj_ty.repr(tcx));
-
-        let mut datum = source_datum.to_expr_datum();
-        datum.ty = target_obj_ty;
-        DatumBlock::new(bcx, datum)
     }
 }
 

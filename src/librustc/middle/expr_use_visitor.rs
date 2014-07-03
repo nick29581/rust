@@ -644,15 +644,6 @@ impl<'d,'t,TYPER:mc::Typer> ExprUseVisitor<'d,'t,TYPER> {
                                      ty::BorrowKind::from_mutbl(m),
                                      AutoRef);
             }
-            ty::AutoBorrowObj(r, m) => {
-                let cmt_deref = self.mc.cat_deref_obj(expr, cmt_derefd);
-                self.delegate.borrow(expr.id,
-                                     expr.span,
-                                     cmt_deref,
-                                     r,
-                                     ty::BorrowKind::from_mutbl(m),
-                                     AutoRef)
-            }
             ty::AutoUnsizeUniq(_) | ty::AutoUnsize(_) | ty::AutoUnsafe(_) => {}
         }
     }

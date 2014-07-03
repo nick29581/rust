@@ -933,12 +933,6 @@ impl<'a> ebml_writer_helpers for Encoder<'a> {
                         this.emit_enum_variant_arg(0, |this| m.encode(this))
                     })
                 }
-                &ty::AutoBorrowObj(r, m) => {
-                    this.emit_enum_variant("AutoBorrowObj", 4, 2, |this| {
-                        this.emit_enum_variant_arg(0, |this| r.encode(this));
-                        this.emit_enum_variant_arg(1, |this| m.encode(this))
-                    })
-                }
             }
         });
     }
@@ -961,7 +955,7 @@ impl<'a> ebml_writer_helpers for Encoder<'a> {
         self.emit_enum("UnsizeKind", |this| {
             match *uk {
                 ty::UnsizeLength(len) => {
-                    this.emit_enum_variant("AutoBorrowObj", 0, 1, |this| {
+                    this.emit_enum_variant("UnsizeLength", 0, 1, |this| {
                         this.emit_enum_variant_arg(0, |this| len.encode(this))
                     })
                 }
@@ -1405,8 +1399,7 @@ impl<'a> ebml_decoder_decoder_helpers for reader::Decoder<'a> {
             let variants = ["AutoPtr",
                             "AutoUnsize",
                             "AutoUnsizeUniq",
-                            "AutoUnsafe",
-                            "AutoBorrowObj"];
+                            "AutoUnsafe"];
             this.read_enum_variant(variants, |this, i| {
                 Ok(match i {
                     0 => {
@@ -1444,14 +1437,6 @@ impl<'a> ebml_decoder_decoder_helpers for reader::Decoder<'a> {
                             this.read_enum_variant_arg(0, |this| Decodable::decode(this)).unwrap();
 
                         ty::AutoUnsafe(m)
-                    }
-                    4 => {
-                        let r: ty::Region =
-                            this.read_enum_variant_arg(0, |this| Decodable::decode(this)).unwrap();
-                        let m: ast::Mutability =
-                            this.read_enum_variant_arg(1, |this| Decodable::decode(this)).unwrap();
-
-                        ty::AutoBorrowObj(r.tr(xcx), m)
                     }
                     _ => fail!("bad enum variant for ty::AutoRef")
                 })

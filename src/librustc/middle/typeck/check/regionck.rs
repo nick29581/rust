@@ -1143,21 +1143,6 @@ fn link_autoref(rcx: &Rcx,
         ty::AutoPtr(r, m, _) => {
             link_region(rcx, expr.span, r,
                 ty::BorrowKind::from_mutbl(m), expr_cmt);
-            /*match *a {
-                None | Some(box ref ty::AutoUnsize(..)) => {
-                    link_region(rcx, expr.span, r,
-                        ty::BorrowKind::from_mutbl(m), expr_cmt);
-                }
-                Some(box ref a) => {
-                    link_autoref(rcx, expr, autoderefs, a)
-                }
-            }*/
-        }
-
-        ty::AutoBorrowObj(r, m) => {
-            let cmt_deref = mc.cat_deref_obj(expr, expr_cmt);
-            link_region(rcx, expr.span, r,
-                        ty::BorrowKind::from_mutbl(m), cmt_deref);
         }
 
         ty::AutoUnsafe(_) | ty::AutoUnsizeUniq(_) | ty::AutoUnsize(_) => {}

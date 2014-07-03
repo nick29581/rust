@@ -775,14 +775,10 @@ impl<'a> LookupContext<'a> {
             ty::ty_rptr(_, self_mt) => {
                 let region =
                     self.infcx().next_region_var(infer::Autoref(self.span));
-                let (extra_derefs, auto) = match ty::get(self_mt.ty).sty {
-                    ty::ty_trait(..) => (0, ty::AutoBorrowObj(region, self_mt.mutbl)),
-                    _ => (1, ty::AutoPtr(region, self_mt.mutbl, None)),
-                };
                 (ty::mk_rptr(tcx, region, self_mt),
                  ty::AutoDerefRef {
-                     autoderefs: autoderefs + extra_derefs,
-                     autoref: Some(auto)})
+                     autoderefs: autoderefs + 1,
+                     autoref: Some(ty::AutoPtr(region, self_mt.mutbl, None))})
             }
             _ => {
                 (self_ty,
@@ -905,7 +901,8 @@ impl<'a> LookupContext<'a> {
                     .. }) => {
                 let tcx = self.tcx();
                 self.search_for_some_kind_of_autorefd_method(
-                    AutoBorrowObj, autoderefs, [MutImmutable, MutMutable],
+                    |r, m| AutoPtr(r, m, None),
+                    autoderefs, [MutImmutable, MutMutable],
                     |m, r| {
                         let tr = ty::mk_trait(tcx, trt_did, trt_substs.clone(), b);
                         ty::mk_rptr(tcx, r, ty::mt{ ty: tr, mutbl: m })

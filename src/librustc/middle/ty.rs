@@ -228,8 +228,7 @@ pub struct AutoDerefRef {
 
 #[deriving(Clone, PartialEq)]
 pub enum AutoRef {
-    /// Convert from T or ~T to &T or ~[T]/&[T] to &[T]
-    /// Value or thin pointer to thin pointer or fat pointer to fat pointer
+    /// Convert from T to &T
     /// The third field allows us to wrap other AutoRef adjustments.
     AutoPtr(Region, ast::Mutability, Option<Box<AutoRef>>),
 
@@ -243,11 +242,6 @@ pub enum AutoRef {
     /// Convert from T to *T
     /// Value to thin pointer
     AutoUnsafe(ast::Mutability),
-
-    /// Convert from Box<Trait>/&Trait to &Trait
-    /// Fat pointer to fat pointer (objects)
-    // TODO kill this too!
-    AutoBorrowObj(Region, ast::Mutability),
 }
 
 // Ugly little helper function. The bool in the returned tuple is true if
@@ -2969,38 +2963,8 @@ pub fn adjust_ty(cx: &ctxt,
                 mk_ptr(cx, mt {ty: ty, mutbl: m})
             }
 
-            AutoBorrowObj(r, m) => {
-                borrow_obj(cx, span, r, m, ty)
-            }
-
             AutoUnsize(ref k) => unsize_ty(cx, ty, k, span),
             AutoUnsizeUniq(ref k) => ty::mk_uniq(cx, unsize_ty(cx, ty, k, span)),
-        }
-    }
-
-    fn borrow_obj(cx: &ctxt, span: Span, r: Region,
-                  m: ast::Mutability, ty: ty::t) -> ty::t {
-        match get(ty).sty {
-            ty_uniq(t) | ty_rptr(_, mt{ty: t, ..}) => match get(t).sty {
-                ty_trait(box ty::TyTrait {def_id, ref substs, bounds, .. }) => {
-                    mk_rptr(cx, r, mt {
-                        ty: ty::mk_trait(cx, def_id, substs.clone(), bounds),
-                        mutbl: m
-                    })
-                }
-                _ => {
-                    cx.sess.span_bug(
-                        span,
-                        format!("borrow-trait-obj associated with bad sty: {:?}",
-                                get(ty).sty).as_slice());
-                }
-            },
-            ref s => {
-                cx.sess.span_bug(
-                    span,
-                    format!("borrow-trait-obj associated with bad sty: {:?}",
-                            s).as_slice());
-            }
         }
     }
 }
@@ -3049,7 +3013,6 @@ impl AutoRef {
             ty::AutoUnsize(ref k) => ty::AutoUnsize(k.clone()),
             ty::AutoUnsizeUniq(ref k) => ty::AutoUnsizeUniq(k.clone()),
             ty::AutoUnsafe(m) => ty::AutoUnsafe(m),
-            ty::AutoBorrowObj(r, m) => ty::AutoBorrowObj(f(r), m),
         }
     }
 }
