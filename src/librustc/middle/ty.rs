@@ -246,14 +246,19 @@ pub enum AutoRef {
 
 // Ugly little helper function. The bool in the returned tuple is true if
 // there is unsize to trait object at the bottom of the adjustment. If that
-// is surrounded by an AutoPtr, then we also return the region of the AutoPtr.
-// The second bool is true if the adjustment is unique (yuck).
+// is surrounded by an AutoPtr, then we also return the region of the AutoPtr
+// (in the third argument). The second bool is true if the adjustment is unique.
 fn autoref_object_region(autoref: &AutoRef) -> (bool, bool, Option<Region>) {
-    match autoref {
-        &AutoUnsize(ref k) => match k {
+    fn unsize_kind_region(k: &UnsizeKind) -> (bool, bool, Option<Region>) {
+        match k {
             &UnsizeVtable(..) => (true, false, None),
+            &UnsizeStruct(box ref k, _) => unsize_kind_region(k),
             _ => (false, false, None)
-        },
+        }
+    }
+
+    match autoref {
+        &AutoUnsize(ref k) => unsize_kind_region(k),
         &AutoUnsizeUniq(ref k) => match k {
             &UnsizeVtable(..) => (true, true, None),
             _ => (false, false, None)
@@ -296,6 +301,42 @@ pub fn adjust_is_object(adj: &AutoAdjustment) -> bool {
         _ => false
     }
 }
+
+// If possible, returns the type expected from the given adjustment. This is not
+// possible if the adjustment depends on the type of the adjusted expression.
+pub fn type_of_adjust(cx: &ctxt, adj: &AutoAdjustment) -> Option<t> {
+    fn type_of_autoref(cx: &ctxt, autoref: &AutoRef) -> Option<t> {
+        match autoref {
+            &AutoUnsize(ref k) => match k {
+                &UnsizeVtable(bounds, def_id, ref substs) => {
+                    Some(mk_trait(cx, def_id, substs.clone(), bounds))
+                }
+                _ => None
+            },
+            &AutoUnsizeUniq(ref k) => match k {
+                &UnsizeVtable(bounds, def_id, ref substs) => {
+                    Some(mk_uniq(cx, mk_trait(cx, def_id, substs.clone(), bounds)))
+                }
+                _ => None
+            },
+            &AutoPtr(r, m, Some(box ref autoref)) => {
+                match type_of_autoref(cx, autoref) {
+                    Some(t) => Some(mk_rptr(cx, r, mt {mutbl: m, ty: t})),
+                    None => None
+                }
+            }
+            _ => None
+        }
+    }
+
+    match adj {
+        &AutoDerefRef(AutoDerefRef{autoref: Some(ref autoref), ..}) => {
+            type_of_autoref(cx, autoref)
+        }
+        _ => None
+    }
+}
+
 
 
 /// A restriction that certain types must be the same size. The use of
@@ -2602,8 +2643,29 @@ pub fn type_is_machine(ty: t) -> bool {
 }
 
 // Is the type's representation size known at compile time?
-pub fn type_is_sized(cx: &ctxt, ty: ty::t) -> bool {
+pub fn type_is_sized(cx: &ctxt, ty: t) -> bool {
     type_contents(cx, ty).is_sized(cx)
+}
+
+// Return the smallest part of t which is unsized. Fails if t is sized.
+pub fn unsized_part_of_type(cx: &ctxt, ty: t) -> t {
+    match get(ty).sty {
+        ty_str | ty_trait(..) | ty_vec(..) => ty,
+        ty_struct(_, ref substs) => {
+            // Exactly one of the type parameters must be unsized.
+            for tp in substs.types.get_vec(subst::TypeSpace).iter() {
+                if !type_is_sized(cx, *tp) {
+                    return unsized_part_of_type(cx, *tp);
+                }
+            }
+            fail!("Unsized struct type with no unsized type params?");
+        }
+        _ => {
+            assert!(type_is_sized(cx, ty),
+                    "unsized_part_of_type failed even though ty is unsized");
+            fail!("called unsized_part_of_type with sized ty");
+        }
+    }
 }
 
 // Whether a type is enum like, that is an enum type with only nullary

@@ -265,6 +265,13 @@ pub fn check_expr(cx: &mut Context, e: &Expr) {
                            "repeated element will be copied");
             }
         }
+        ExprAssign(ref lhs, _) |
+        ExprAssignOp(_, ref lhs, _) => {
+            let lhs_ty = ty::expr_ty(cx.tcx, &**lhs);
+            if !ty::type_is_sized(cx.tcx, lhs_ty) {
+                cx.tcx.sess.span_err(lhs.span, "dynamically sized type on lhs of assignment");
+            }
+        }
         _ => {}
     }
 

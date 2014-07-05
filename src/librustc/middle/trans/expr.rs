@@ -627,24 +627,25 @@ fn trans_rec_field<'a>(bcx: &'a Block<'a>,
     let bare_ty = ty::unopen_type(base_datum.ty);
     let repr = adt::represent_type(bcx.ccx(), bare_ty);
     with_field_tys(bcx.tcx(), bare_ty, None, |discr, field_tys| {
-            let ix = ty::field_idx_strict(bcx.tcx(), field.name, field_tys);
-            let d = base_datum.get_element(
-                bcx,
-                field_tys[ix].mt.ty,
-                |srcval| adt::trans_field_ptr(bcx, &*repr, srcval, discr, ix));
+        let ix = ty::field_idx_strict(bcx.tcx(), field.name, field_tys);
+        let d = base_datum.get_element(
+            bcx,
+            field_tys[ix].mt.ty,
+            |srcval| adt::trans_field_ptr(bcx, &*repr, srcval, discr, ix));
 
-            if ty::type_is_sized(bcx.tcx(), d.ty) {
-                DatumBlock { datum: d.to_expr_datum(), bcx: bcx }
-            } else {
-                let scratch = rvalue_scratch_datum(bcx, ty::mk_open(bcx.tcx(), d.ty), "");
-                Store(bcx, d.val, get_dataptr(bcx, scratch.val));
-                let len = Load(bcx, get_len(bcx, base_datum.val));
-                Store(bcx, len, get_len(bcx, scratch.val));
+        if ty::type_is_sized(bcx.tcx(), d.ty) {
+            DatumBlock { datum: d.to_expr_datum(), bcx: bcx }
+        } else {
+            debug!("nrc: {}", bcx.ty_to_str(d.ty))
+            let scratch = rvalue_scratch_datum(bcx, ty::mk_open(bcx.tcx(), d.ty), "");
+            Store(bcx, d.val, get_dataptr(bcx, scratch.val));
+            let info = Load(bcx, get_len(bcx, base_datum.val));
+            Store(bcx, info, get_len(bcx, scratch.val));
 
-                DatumBlock::new(bcx, scratch.to_expr_datum())
+            DatumBlock::new(bcx, scratch.to_expr_datum())
 
-            }
-        })
+        }
+    })
 }
 
 fn trans_index<'a>(bcx: &'a Block<'a>,

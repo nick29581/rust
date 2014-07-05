@@ -435,13 +435,10 @@ impl<'a> LookupContext<'a> {
         let span = self.self_expr.map_or(self.span, |e| e.span);
         check::autoderef(self.fcx, span, self_ty, None, PreferMutLvalue, |self_ty, _| {
             match get(self_ty).sty {
-                ty_uniq(ty) | ty_rptr(_, mt {ty, ..}) => match get(ty).sty{
-                    ty_trait(box TyTrait { def_id, ref substs, .. }) => {
-                        self.push_inherent_candidates_from_object(def_id, substs);
-                        self.push_inherent_impl_candidates_for_type(def_id);
-                    }
-                    _ => {}
-                },
+                ty_trait(box TyTrait { def_id, ref substs, .. }) => {
+                    self.push_inherent_candidates_from_object(def_id, substs);
+                    self.push_inherent_impl_candidates_for_type(def_id);
+                }
                 ty_enum(did, _) | ty_struct(did, _) => {
                     if self.check_traits == CheckTraitsAndInherentMethods {
                         self.push_inherent_impl_candidates_for_type(did);
@@ -1346,10 +1343,9 @@ impl<'a> LookupContext<'a> {
                                 rcvr_matches_object(self_did, candidate)
                             }
                             _ => mutability_matches(mt.mutbl, m) &&
-                                 rcvr_matches_ty(self.fcx, mt.ty, candidate),
+                                 rcvr_matches_ty(self.fcx, mt.ty, candidate)
                         }
                     }
-
 
                     _ => false
                 }

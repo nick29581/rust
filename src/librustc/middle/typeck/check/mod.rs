@@ -3562,6 +3562,7 @@ pub fn check_simd(tcx: &ty::ctxt, sp: Span, id: ast::NodeId) {
     }
 }
 
+
 pub fn check_enum_variants_sized(ccx: &CrateCtxt,
                                  vs: &[ast::P<ast::Variant>]) {
     for &v in vs.iter() {

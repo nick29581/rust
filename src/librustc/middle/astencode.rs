@@ -1123,15 +1123,7 @@ fn encode_side_tables_for_id(ecx: &e::EncodeContext,
 
     for &adjustment in tcx.adjustments.borrow().find(&id).iter() {
         match *adjustment {
-            ty::AutoDerefRef(ty::AutoDerefRef{ autoderefs: 1,
-                                               autoref: Some(
-                                                ty::AutoPtr(_, _, Some(
-                                                    box ty::AutoUnsize(
-                                                        ty::UnsizeVtable(..)))))}) |
-            ty::AutoDerefRef(ty::AutoDerefRef{ autoderefs: 1,
-                                               autoref: Some(
-                                                ty::AutoUnsizeUniq(
-                                                    ty::UnsizeVtable(..)))}) => {
+            _ if ty::adjust_is_object(adjustment) => {
                 let method_call = MethodCall::autoobject(id);
                 for &method in tcx.method_map.borrow().find(&method_call).iter() {
                     ebml_w.tag(c::tag_table_method_map, |ebml_w| {

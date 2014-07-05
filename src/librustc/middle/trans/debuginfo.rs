@@ -2899,6 +2899,14 @@ fn type_metadata(cx: &CrateContext,
         // FIXME Can we do better than this for unsized vec/str fields?
         ty::ty_vec(typ, None) => fixed_vec_metadata(cx, unique_type_id, typ, 1, usage_site_span),
         ty::ty_str => fixed_vec_metadata(cx, unique_type_id, ty::mk_i8(), 1, usage_site_span),
+        ty::ty_trait(box ty::TyTrait { def_id, ref substs, ref bounds }) => {
+            // TODO faking the ty::UniqTraitStore
+            MetadataCreationResult::new(
+                trait_metadata(cx, def_id, t, substs,
+                               ty::UniqTraitStore,
+                               bounds, unique_type_id),
+            false)
+        }
         ty::ty_uniq(ty) | ty::ty_ptr(ty::mt{ty, ..}) | ty::ty_rptr(_, ty::mt{ty, ..}) => {
             match ty::get(ty).sty {
                 ty::ty_vec(typ, None) => {
@@ -2907,11 +2915,7 @@ fn type_metadata(cx: &CrateContext,
                 ty::ty_str => {
                     vec_slice_metadata(cx, t, ty::mk_i8(), unique_type_id, usage_site_span)
                 }
-                ty::ty_trait(box ty::TyTrait {
-                        def_id,
-                        ref substs,
-                        ref bounds
-                    }) => {
+                ty::ty_trait(box ty::TyTrait { def_id, ref substs, ref bounds }) => {
                     let tstore = match *sty {
                         ty::ty_uniq(..) => ty::UniqTraitStore,
                         ty::ty_ptr(ref mt) | ty::ty_rptr(_, ref mt) => {

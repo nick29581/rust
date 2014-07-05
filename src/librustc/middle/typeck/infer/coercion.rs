@@ -373,7 +373,9 @@ impl<'f> Coerce<'f> {
                                           def_id,
                                           substs.clone(),
                                           bounds);
-                    Some((ty, ty::UnsizeVtable(bounds, def_id, substs.clone())))
+                    Some((ty, ty::UnsizeVtable(bounds,
+                                               def_id,
+                                               substs.clone())))
                 }
                 (&ty::ty_struct(did_a, ref substs_a), &ty::ty_struct(did_b, ref substs_b))
                   if did_a == did_b => {
