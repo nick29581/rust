@@ -14,10 +14,19 @@ struct Fat<type T> {
     ptr: T
 }
 
+struct Foo;
+trait Bar {}
+
 pub fn main() {
     // With a vec of ints.
     let f1 = Fat { ptr: [1, 2, 3] };
     let f2: &Fat<[int, ..3]> = &f1;
     let f3: &Fat<[uint]> = f2;
     //~^ ERROR mismatched types: expected `&Fat<[uint]>` but found `&Fat<[int, .. 3]>`
+
+    // With a trait.
+    let f1 = Fat { ptr: Foo };
+    let f2: &Fat<Foo> = &f1;
+    let f3: &Fat<Bar> = f2;
+    //~^ ERROR failed to find an implementation of trait Bar for Foo
 }

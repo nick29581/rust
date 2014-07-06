@@ -8,15 +8,24 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Attempt to change the lieftime as well as unsizing.
+// Attempt to change the lifetime as well as unsizing.
 
 struct Fat<type T> {
     ptr: T
 }
+
+struct Foo;
+trait Bar {}
+impl Bar for Foo {}
 
 pub fn main() {
     // With a vec of ints.
     let f1 = Fat { ptr: [1, 2, 3] };
     let f2: &Fat<[int, ..3]> = &f1; //~ ERROR `f1` does not live long enough
     let f3: &'static Fat<[int]> = f2;
+
+    // With a trait.
+    let f1 = Fat { ptr: Foo };
+    let f2: &Fat<Foo> = &f1; //~ ERROR `f1` does not live long enough
+    let f3: &'static Fat<Bar> = f2;
 }

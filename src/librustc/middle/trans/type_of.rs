@@ -184,7 +184,6 @@ pub fn type_of(cx: &CrateContext, t: ty::t) -> Type {
             _ => fail!("Unexpected type returned from unsized_part_of_type : {}",
                        t.repr(cx.tcx()))
         }
-        
     }
 
     // Check the cache.

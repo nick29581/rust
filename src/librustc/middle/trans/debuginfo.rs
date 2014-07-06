@@ -2794,7 +2794,7 @@ fn trait_metadata(cx: &CrateContext,
                   def_id: ast::DefId,
                   trait_type: ty::t,
                   substs: &subst::Substs,
-                  trait_store: ty::TraitStore,
+                  trait_store: Option<ty::TraitStore>,
                   _: &ty::BuiltinBounds,
                   unique_type_id: UniqueTypeId)
                -> DIType {
@@ -2803,7 +2803,10 @@ fn trait_metadata(cx: &CrateContext,
     // But it does not describe the trait's methods.
     let last = ty::with_path(cx.tcx(), def_id, |mut path| path.last().unwrap());
     let ident_string = token::get_name(last.name());
-    let mut name = ppaux::trait_store_to_str(cx.tcx(), trait_store);
+    let mut name = match trait_store {
+        Some(ts) => ppaux::trait_store_to_str(cx.tcx(), ts),
+        None => String::new()
+    };
     name.push_str(ident_string.get());
 
     // Add type and region parameters
@@ -2900,10 +2903,9 @@ fn type_metadata(cx: &CrateContext,
         ty::ty_vec(typ, None) => fixed_vec_metadata(cx, unique_type_id, typ, 1, usage_site_span),
         ty::ty_str => fixed_vec_metadata(cx, unique_type_id, ty::mk_i8(), 1, usage_site_span),
         ty::ty_trait(box ty::TyTrait { def_id, ref substs, ref bounds }) => {
-            // TODO faking the ty::UniqTraitStore
             MetadataCreationResult::new(
                 trait_metadata(cx, def_id, t, substs,
-                               ty::UniqTraitStore,
+                               None,
                                bounds, unique_type_id),
             false)
         }
@@ -2925,7 +2927,7 @@ fn type_metadata(cx: &CrateContext,
                     };
                     MetadataCreationResult::new(
                         trait_metadata(cx, def_id, t, substs,
-                                       tstore,
+                                       Some(tstore),
                                        bounds, unique_type_id),
                     false)
                 }

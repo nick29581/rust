@@ -14,9 +14,18 @@ struct Fat<type T> {
     ptr: T
 }
 
+struct Foo;
+trait Bar {}
+impl Bar for Foo {}
+
 pub fn main() {
     // With a vec of ints.
     let f1 = Fat { ptr: [1, 2, 3] };
     let f2: &Fat<[int, ..3]> = &f1;
     let f3: &mut Fat<[int]> = f2; //~ ERROR cannot borrow immutable dereference
+
+    // With a trait.
+    let f1 = Fat { ptr: Foo };
+    let f2: &Fat<Foo> = &f1;
+    let f3: &mut Fat<Bar> = f2; //~ ERROR cannot borrow immutable dereference
 }

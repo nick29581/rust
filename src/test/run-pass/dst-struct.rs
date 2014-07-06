@@ -34,6 +34,17 @@ fn foo2<T:ToBar>(x: &Fat<[T]>) {
     assert!(x.f2 == "some str");
 }
 
+fn foo3(x: &Fat<Fat<[int]>>) {
+    let y = &x.ptr.ptr;
+    assert!(x.f1 == 5);
+    assert!(x.f2 == "some str");
+    assert!(x.ptr.f1 == 8);
+    assert!(x.ptr.f2 == "deep str");
+    assert!(x.ptr.ptr.len() == 3);
+    assert!(y[0] == 1);
+    assert!(x.ptr.ptr[1] == 2);
+}
+
 #[deriving(PartialEq,Eq)]
 struct Bar;
 
@@ -85,4 +96,17 @@ pub fn main() {
     assert!(f5.ptr.len() == 0);
     let f5: &Fat<[Bar]> = &Fat { f1: 5, f2: "some str", ptr: [] };
     assert!(f5.ptr.len() == 0);
+
+    // Deeply nested
+    let f1 = Fat { f1: 5, f2: "some str", ptr: Fat { f1: 8, f2: "deep str", ptr: [1, 2, 3]} };
+    foo3(&f1);
+    let f2 = &f1;
+    foo3(f2);
+    let f3: &Fat<Fat<[int]>> = f2;
+    foo3(f3);
+    let f4: &Fat<Fat<[int]>> = &f1;
+    foo3(f4);
+    let f5: &Fat<Fat<[int]>> =
+        &Fat { f1: 5, f2: "some str", ptr: Fat { f1: 8, f2: "deep str", ptr: [1, 2, 3]} };
+    foo3(f5);
 }

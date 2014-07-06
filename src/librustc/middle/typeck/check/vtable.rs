@@ -749,9 +749,21 @@ pub fn early_resolve_expr(ex: &ast::Expr, fcx: &FnCtxt, is_early: bool) {
 // match the source type.
 // This function will always return types if ty::adjust_is_object is true for the
 // adjustment
-fn trait_cast_types(fcx: &FnCtxt, adj: &ty::AutoAdjustment, src_ty: ty::t, sp: Span) -> Option<(ty::t, ty::t)> {
-    fn trait_cast_types_autoref(fcx: &FnCtxt, autoref: &ty::AutoRef, src_ty: ty::t) -> Option<(ty::t, ty::t)> {
-        fn trait_cast_types_unsize(fcx: &FnCtxt, k: &ty::UnsizeKind, src_ty: ty::t) -> Option<(ty::t, ty::t)> {
+fn trait_cast_types(fcx: &FnCtxt,
+                    adj: &ty::AutoAdjustment,
+                    src_ty: ty::t,
+                    sp: Span)
+                    -> Option<(ty::t, ty::t)> {
+    fn trait_cast_types_autoref(fcx: &FnCtxt,
+                                autoref: &ty::AutoRef,
+                                src_ty: ty::t,
+                                sp: Span)
+                                -> Option<(ty::t, ty::t)> {
+        fn trait_cast_types_unsize(fcx: &FnCtxt,
+                                   k: &ty::UnsizeKind,
+                                   src_ty: ty::t,
+                                   sp: Span)
+                                   -> Option<(ty::t, ty::t)> {
             match k {
                 &ty::UnsizeVtable(bounds, def_id, ref substs) => {
                     Some((src_ty, ty::mk_trait(fcx.tcx(), def_id, substs.clone(), bounds)))
@@ -759,7 +771,9 @@ fn trait_cast_types(fcx: &FnCtxt, adj: &ty::AutoAdjustment, src_ty: ty::t, sp: S
                 &ty::UnsizeStruct(box ref k, tp_index) => match ty::get(src_ty).sty {
                     ty::ty_struct(_, ref substs) => {
                         let ty_substs = substs.types.get_vec(subst::TypeSpace);
-                        trait_cast_types_unsize(fcx, k, *ty_substs.get(tp_index))
+                        let field_ty = *ty_substs.get(tp_index);
+                        let field_ty = structurally_resolved_type(fcx, sp, field_ty);
+                        trait_cast_types_unsize(fcx, k, field_ty, sp)
                     }
                     _ => fail!("Failed to find a ty_struct to correspond with \
                                 UnsizeStruct whilst walking adjustment. Found {}",
@@ -770,7 +784,7 @@ fn trait_cast_types(fcx: &FnCtxt, adj: &ty::AutoAdjustment, src_ty: ty::t, sp: S
         }
 
         match autoref {
-            &ty::AutoUnsize(ref k) => trait_cast_types_unsize(fcx, k, src_ty),
+            &ty::AutoUnsize(ref k) => trait_cast_types_unsize(fcx, k, src_ty, sp),
             &ty::AutoUnsizeUniq(ref k) => match k {
                 &ty::UnsizeVtable(bounds, def_id, ref substs) => {
                     Some((src_ty, ty::mk_trait(fcx.tcx(), def_id, substs.clone(), bounds)))
@@ -778,7 +792,7 @@ fn trait_cast_types(fcx: &FnCtxt, adj: &ty::AutoAdjustment, src_ty: ty::t, sp: S
                 _ => None
             },
             &ty::AutoPtr(_, _, Some(box ref autoref)) => {
-                trait_cast_types_autoref(fcx, autoref, src_ty)
+                trait_cast_types_autoref(fcx, autoref, src_ty, sp)
             }
             _ => None
         }
@@ -791,7 +805,7 @@ fn trait_cast_types(fcx: &FnCtxt, adj: &ty::AutoAdjustment, src_ty: ty::t, sp: S
                 derefed_type = ty::deref(derefed_type, false).unwrap().ty;
                 derefed_type = structurally_resolved_type(fcx, sp, derefed_type)
             }
-            trait_cast_types_autoref(fcx, autoref, derefed_type)
+            trait_cast_types_autoref(fcx, autoref, derefed_type, sp)
         }
         _ => None
     }
