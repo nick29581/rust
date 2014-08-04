@@ -96,7 +96,7 @@ impl<A: Clone> Clone for ~[A] {
                     // is easily confused, so any extra operations during the loop can
                     // prevent this optimization.
                     let mut i = 0;
-                    let p = &mut (*ret) as *mut _ as *mut A;
+                    let p = &mut (*ret) as *mut A;
                     try_finally(
                         &mut i, (),
                         |i, ()| while *i < len {
@@ -116,7 +116,8 @@ impl<A: Clone> Clone for ~[A] {
                 let slice: Slice<A> = Slice{data: ret as *A, len: len};
                 mem::transmute(slice)
             }
-        }    }
+        }
+    }
 
     // NOTE: remove after snapshot
     #[cfg(stage0)]
@@ -135,7 +136,7 @@ impl<A: Clone> Clone for ~[A] {
             (*ret).alloc = len * a_size;
 
             let mut i = 0;
-            let p = &mut (*ret).data as *mut _ as *mut A;
+            let p = &mut (*ret).data as *mut A;
             try_finally(
                 &mut i, (),
                 |i, ()| while *i < len {

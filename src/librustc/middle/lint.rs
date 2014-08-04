@@ -1489,18 +1489,8 @@ enum Allocation {
 }
 
 fn check_unnecessary_allocation(cx: &Context, e: &ast::Expr) {
-    // Warn if string and vector literals with sigils, or boxing expressions,
-    // are immediately borrowed.
+    // Warn if boxing expressions are immediately borrowed.
     let allocation = match e.node {
-        ast::ExprVstore(e2, ast::ExprVstoreUniq) => {
-            match e2.node {
-                ast::ExprLit(lit) if ast_util::lit_is_str(lit) => {
-                    VectorAllocation
-                }
-                ast::ExprVec(..) => VectorAllocation,
-                _ => return
-            }
-        }
         ast::ExprUnary(ast::UnUniq, _) |
         ast::ExprUnary(ast::UnBox, _) => BoxAllocation,
 
@@ -1514,18 +1504,18 @@ fn check_unnecessary_allocation(cx: &Context, e: &ast::Expr) {
     match cx.tcx.adjustments.borrow().find(&e.id) {
         Some(adjustment) => {
             match *adjustment {
-                ty::AutoDerefRef(ty::AutoDerefRef { autoref, .. }) => {
+                ty::AutoDerefRef(ty::AutoDerefRef { ref autoref, .. }) => {
                     match (allocation, autoref) {
-                        (VectorAllocation, Some(ty::AutoBorrowVec(..))) => {
+                        (VectorAllocation, &Some(ty::AutoPtr(_, _, None))) => {
                             report("unnecessary allocation, the sigil can be \
                                     removed");
                         }
                         (BoxAllocation,
-                         Some(ty::AutoPtr(_, ast::MutImmutable))) => {
+                         &Some(ty::AutoPtr(_, ast::MutImmutable, None))) => {
                             report("unnecessary allocation, use & instead");
                         }
                         (BoxAllocation,
-                         Some(ty::AutoPtr(_, ast::MutMutable))) => {
+                         &Some(ty::AutoPtr(_, ast::MutMutable, None))) => {
                             report("unnecessary allocation, use &mut \
                                     instead");
                         }

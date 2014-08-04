@@ -35,21 +35,20 @@ fn foo4<'a, 'b>(x: &'a Foo) -> (&'b int, &'a int, &int) {
 
 fn foo5(x: &int) -> &int {
 //~^ NOTE: consider using an explicit lifetime parameter as shown: fn foo5<'a>(x: &'a int) -> &'a int
-    x //~ ERROR: mismatched types
-    //~^ ERROR: cannot infer
+    x //~ ERROR: cannot infer
 }
 
 struct Bar<'x, 'y, 'z> { bar: &'y int, baz: int }
 fn bar1(x: &Bar) -> (&int, &int, &int) {
 //~^ NOTE: consider using an explicit lifetime parameter as shown: fn bar1<'a, 'b, 'c, 'd>(x: &'d Bar<'b, 'a, 'c>) -> (&'a int, &'d int, &'d int)
-    (x.bar, &x.baz, &x.baz) //~ ERROR: mismatched types
+    (x.bar, &x.baz, &x.baz) //~ ERROR: cannot infer
     //~^ ERROR: cannot infer
     //~^^ ERROR: cannot infer
 }
 
 fn bar2<'a, 'b, 'c>(x: &Bar<'a, 'b, 'c>) -> (&int, &int, &int) {
 //~^ NOTE: consider using an explicit lifetime parameter as shown: fn bar2<'d, 'a, 'b, 'c>(x: &'d Bar<'a, 'b, 'c>) -> (&'b int, &'d int, &'d int)
-    (x.bar, &x.baz, &x.baz) //~ ERROR: mismatched types
+    (x.bar, &x.baz, &x.baz) //~ ERROR: cannot infer
     //~^ ERROR: cannot infer
     //~^^ ERROR: cannot infer
 }
@@ -58,12 +57,12 @@ struct Cat<'x, T> { cat: &'x int, t: T }
 struct Dog<'y> { dog: &'y int }
 fn cat<'x>(x: Cat<'x, Dog>) -> &int {
 //~^ NOTE: consider using an explicit lifetime parameter as shown: fn cat<'a, 'x>(x: Cat<'x, Dog<'a>>) -> &'a int
-    x.t.dog //~ ERROR: mismatched types
+    x.t.dog //~ ERROR: cannot infer
 }
 
 fn cat2<'x, 'y>(x: Cat<'x, Dog<'y>>) -> &int {
 //~^ NOTE: consider using an explicit lifetime parameter as shown: fn cat2<'x, 'y>(x: Cat<'x, Dog<'y>>) -> &'y int
-    x.t.dog //~ ERROR: mismatched types
+    x.t.dog //~ ERROR: cannot infer
 }
 
 struct Baz<'x> {
@@ -73,7 +72,7 @@ struct Baz<'x> {
 impl<'x> Baz<'x> {
     fn baz1(&self) -> &int {
     //~^ NOTE: consider using an explicit lifetime parameter as shown: fn baz1(&self) -> &'x int
-        self.bar //~ ERROR: mismatched types
+        self.bar //~ ERROR: cannot infer
     }
 }
 
@@ -81,8 +80,7 @@ impl<'a> Baz<'a> {
     fn baz2(&self, x: &int) -> (&int, &int) {
     //~^ NOTE: consider using an explicit lifetime parameter as shown: fn baz2<'b>(&self, x: &'b int) -> (&'a int, &'b int)
         (self.bar, x) //~ ERROR: cannot infer
-        //~^ ERROR: mismatched types
-        //~^^ ERROR: mismatched types
+        //~^ ERROR: cannot infer
     }
 }
 

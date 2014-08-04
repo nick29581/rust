@@ -390,7 +390,7 @@ impl TypeMap {
                 let inner_type_id = self.get_unique_type_id_as_string(inner_type_id);
                 unique_type_id.push_str(inner_type_id.as_slice());
             },
-            ty::ty_vec(ty::mt { ty: inner_type, .. }, optional_length) => {
+            ty::ty_vec(inner_type, optional_length) => {
                 match optional_length {
                     Some(len) => {
                         unique_type_id.push_str(format!("[{}]", len).as_slice());
@@ -579,18 +579,6 @@ impl TypeMap {
                                                .as_slice(),
                                            variant_name);
         let interner_key = self.unique_id_interner.intern(Rc::new(enum_variant_type_id));
-        UniqueTypeId(interner_key)
-    }
-
-    fn get_unique_type_id_of_heap_vec_box(&mut self,
-                                          cx: &CrateContext,
-                                          element_type: ty::t)
-                                       -> UniqueTypeId {
-        let element_type_id = self.get_unique_type_id_of_type(cx, element_type);
-        let heap_vec_box_type_id = format!("$$HEAP_VEC_BOX<{}>$$",
-                                           self.get_unique_type_id_as_string(element_type_id)
-                                               .as_slice());
-        let interner_key = self.unique_id_interner.intern(Rc::new(heap_vec_box_type_id));
         UniqueTypeId(interner_key)
     }
 
@@ -2806,7 +2794,7 @@ fn trait_metadata(cx: &CrateContext,
                   def_id: ast::DefId,
                   trait_type: ty::t,
                   substs: &subst::Substs,
-                  trait_store: ty::TraitStore,
+                  trait_store: Option<ty::TraitStore>,
                   _: &ty::BuiltinBounds,
                   unique_type_id: UniqueTypeId)
                -> DIType {
@@ -2815,7 +2803,10 @@ fn trait_metadata(cx: &CrateContext,
     // But it does not describe the trait's methods.
     let last = ty::with_path(cx.tcx(), def_id, |mut path| path.last().unwrap());
     let ident_string = token::get_name(last.name());
-    let mut name = ppaux::trait_store_to_str(cx.tcx(), trait_store);
+    let mut name = match trait_store {
+        Some(ts) => ppaux::trait_store_to_str(cx.tcx(), ts),
+        None => String::new()
+    };
     name.push_str(ident_string.get());
 
     // Add type and region parameters
@@ -2905,61 +2896,46 @@ fn type_metadata(cx: &CrateContext,
         ty::ty_box(pointee_type) => {
             at_box_metadata(cx, t, pointee_type, unique_type_id)
         }
-        ty::ty_vec(ref mt, Some(len)) => {
-            fixed_vec_metadata(cx, unique_type_id, mt.ty, len, usage_site_span)
+        ty::ty_vec(typ, Some(len)) => {
+            fixed_vec_metadata(cx, unique_type_id, typ, len, usage_site_span)
         }
-        ty::ty_uniq(pointee_type) => {
-            match ty::get(pointee_type).sty {
-                ty::ty_vec(ref mt, None) => {
-                    let vec_metadata = vec_slice_metadata(cx, t, mt.ty, usage_site_span);
-                    pointer_type_metadata(cx, t, vec_metadata)
-                }
-                ty::ty_str => {
-                    let i8_t = ty::mk_i8();
-                    let vec_metadata = vec_slice_metadata(cx, t, i8_t, usage_site_span);
-                    pointer_type_metadata(cx, t, vec_metadata)
-                }
-                ty::ty_trait(box ty::TyTrait {
-                        def_id,
-                        ref substs,
-                        ref bounds
-                    }) => {
-                    MetadataCreationResult::new(
-                        trait_metadata(cx, def_id, t, substs, ty::UniqTraitStore,
-                                       bounds, unique_type_id),
-                    false)
-                }
-                _ => {
-                    let pointee_metadata = type_metadata(cx, pointee_type, usage_site_span);
-                    return_if_created_in_meantime!();
-                    MetadataCreationResult::new(pointer_type_metadata(cx, t, pointee_metadata),
-                                                false)
-                }
-            }
+        // FIXME Can we do better than this for unsized vec/str fields?
+        ty::ty_vec(typ, None) => fixed_vec_metadata(cx, unique_type_id, typ, 0, usage_site_span),
+        ty::ty_str => fixed_vec_metadata(cx, unique_type_id, ty::mk_i8(), 0, usage_site_span),
+        ty::ty_trait(box ty::TyTrait { def_id, ref substs, ref bounds }) => {
+            MetadataCreationResult::new(
+                trait_metadata(cx, def_id, t, substs,
+                               None,
+                               bounds, unique_type_id),
+            false)
         }
-        ty::ty_ptr(ref mt) | ty::ty_rptr(_, ref mt) => {
-            match ty::get(mt.ty).sty {
-                ty::ty_vec(ref mt, None) => {
-                    vec_slice_metadata(cx, t, mt.ty, unique_type_id, usage_site_span)
+        ty::ty_uniq(ty) | ty::ty_ptr(ty::mt{ty, ..}) | ty::ty_rptr(_, ty::mt{ty, ..}) => {
+            match ty::get(ty).sty {
+                ty::ty_vec(typ, None) => {
+                    vec_slice_metadata(cx, t, typ, unique_type_id, usage_site_span)
                 }
                 ty::ty_str => {
                     vec_slice_metadata(cx, t, ty::mk_i8(), unique_type_id, usage_site_span)
                 }
-                ty::ty_trait(box ty::TyTrait {
-                        def_id,
-                        ref substs,
-                        ref bounds
-                    }) => {
+                ty::ty_trait(box ty::TyTrait { def_id, ref substs, ref bounds }) => {
+                    let tstore = match *sty {
+                        ty::ty_uniq(..) => ty::UniqTraitStore,
+                        ty::ty_ptr(ref mt) | ty::ty_rptr(_, ref mt) => {
+                            ty::RegionTraitStore(ty::ReStatic, mt.mutbl)
+                        }
+                        _ => fail!("Bad pointer to trait")
+                    };
                     MetadataCreationResult::new(
                         trait_metadata(cx, def_id, t, substs,
-                                       ty::RegionTraitStore(ty::ReStatic, mt.mutbl),
+                                       Some(tstore),
                                        bounds, unique_type_id),
                     false)
                 }
                 _ => {
-                    let pointee = type_metadata(cx, mt.ty, usage_site_span);
+                    let pointee_metadata = type_metadata(cx, ty, usage_site_span);
                     return_if_created_in_meantime!();
-                    MetadataCreationResult::new(pointer_type_metadata(cx, t, pointee), false)
+                    MetadataCreationResult::new(pointer_type_metadata(cx, t, pointee_metadata),
+                                                false)
                 }
             }
         }
@@ -3447,7 +3423,6 @@ fn populate_scope_map(cx: &CrateContext,
             ast::ExprAgain(_) |
             ast::ExprPath(_)  => {}
 
-            ast::ExprVstore(ref sub_exp, _)   |
             ast::ExprCast(ref sub_exp, _)     |
             ast::ExprAddrOf(_, ref sub_exp)  |
             ast::ExprField(ref sub_exp, _, _) |

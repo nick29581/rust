@@ -1228,8 +1228,8 @@ impl Clean<Type> for ty::t {
             ty::ty_str => Primitive(Str),
             ty::ty_box(t) => Managed(box t.clean()),
             ty::ty_uniq(t) => Unique(box t.clean()),
-            ty::ty_vec(mt, None) => Vector(box mt.ty.clean()),
-            ty::ty_vec(mt, Some(i)) => FixedVector(box mt.ty.clean(),
+            ty::ty_vec(ty, None) => Vector(box ty.clean()),
+            ty::ty_vec(ty, Some(i)) => FixedVector(box ty.clean(),
                                                    format!("{}", i)),
             ty::ty_ptr(mt) => RawPointer(mt.mutbl.clean(), box mt.ty.clean()),
             ty::ty_rptr(r, mt) => BorrowedRef {
@@ -1296,6 +1296,7 @@ impl Clean<Type> for ty::t {
             }
 
             ty::ty_infer(..) => fail!("ty_infer"),
+            ty::ty_open(..) => fail!("ty_open"),
             ty::ty_err => fail!("ty_err"),
         }
     }

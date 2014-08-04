@@ -15,6 +15,5 @@ use std::task;
 fn main() {
     task::try(proc() {
         fail!("test");
-        1
     }).unwrap()
 }
