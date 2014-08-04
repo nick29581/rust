@@ -382,7 +382,8 @@ mod test {
         r.shuffle(empty);
         let mut one = [1];
         r.shuffle(one);
-        assert_eq!(one.as_slice(), &[1]);
+        let b: &[_] = &[1];
+        assert_eq!(one.as_slice(), b);
 
         let mut two = [1, 2];
         r.shuffle(two);
@@ -390,7 +391,8 @@ mod test {
 
         let mut x = [1, 1, 1];
         r.shuffle(x);
-        assert_eq!(x.as_slice(), &[1, 1, 1]);
+        let b: &[_] = &[1, 1, 1];
+        assert_eq!(x.as_slice(), b);
     }
 
     #[test]
@@ -399,7 +401,8 @@ mod test {
         r.gen::<int>();
         let mut v = [1, 1, 1];
         r.shuffle(v);
-        assert_eq!(v.as_slice(), &[1, 1, 1]);
+        let b: &[_] = &[1, 1, 1];
+        assert_eq!(v.as_slice(), b);
         assert_eq!(r.gen_range(0u, 1u), 0u);
     }
 
