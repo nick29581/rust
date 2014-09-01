@@ -573,7 +573,7 @@ impl<'a> PartialOrd for MaybeOwned<'a> {
 impl<'a> Ord for MaybeOwned<'a> {
     #[inline]
     fn cmp(&self, other: &MaybeOwned) -> Ordering {
-        self.as_slice().cmp(&other.as_slice())
+        self.as_slice().cmp(other.as_slice())
     }
 }
 

@@ -1042,9 +1042,9 @@ pub mod traits {
     use option::{Option, Some};
     use str::{Str, StrSlice, eq_slice};
 
-    impl<'a> Ord for &'a str {
+    impl Ord for str {
         #[inline]
-        fn cmp(&self, other: & &'a str) -> Ordering {
+        fn cmp(&self, other: &str) -> Ordering {
             for (s_b, o_b) in self.bytes().zip(other.bytes()) {
                 match s_b.cmp(&o_b) {
                     Greater => return Greater,
@@ -1057,27 +1057,27 @@ pub mod traits {
         }
     }
 
-    impl<'a> PartialEq for &'a str {
+    impl PartialEq for str {
         #[inline]
-        fn eq(&self, other: & &'a str) -> bool {
-            eq_slice((*self), (*other))
+        fn eq(&self, other: &str) -> bool {
+            eq_slice(self, other)
         }
         #[inline]
-        fn ne(&self, other: & &'a str) -> bool { !(*self).eq(other) }
+        fn ne(&self, other: &str) -> bool { !self.eq(other) }
     }
 
-    impl<'a> Eq for &'a str {}
+    impl Eq for str {}
 
-    impl<'a> PartialOrd for &'a str {
+    impl PartialOrd for str {
         #[inline]
-        fn partial_cmp(&self, other: &&'a str) -> Option<Ordering> {
+        fn partial_cmp(&self, other: &str) -> Option<Ordering> {
             Some(self.cmp(other))
         }
     }
 
-    impl<'a, S: Str> Equiv<S> for &'a str {
+    impl<S: Str> Equiv<S> for str {
         #[inline]
-        fn equiv(&self, other: &S) -> bool { eq_slice(*self, other.as_slice()) }
+        fn equiv(&self, other: &S) -> bool { eq_slice(self, other.as_slice()) }
     }
 }
 

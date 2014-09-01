@@ -40,6 +40,7 @@
 #![stable]
 
 use option::{Option, Some};
+use kinds::Sized;
 
 /// Trait for values that can be compared for equality and inequality.
 ///
@@ -56,7 +57,7 @@ use option::{Option, Some};
 /// `Eq`.
 #[lang="eq"]
 #[unstable = "Definition may change slightly after trait reform"]
-pub trait PartialEq {
+pub trait PartialEq for Sized? {
     /// This method tests for `self` and `other` values to be equal, and is used by `==`.
     fn eq(&self, other: &Self) -> bool;
 
@@ -75,7 +76,7 @@ pub trait PartialEq {
 /// - symmetric: `a == b` implies `b == a`; and
 /// - transitive: `a == b` and `b == c` implies `a == c`.
 #[unstable = "Definition may change slightly after trait reform"]
-pub trait Eq: PartialEq {
+pub trait Eq for Sized? : PartialEq {
     // FIXME #13101: this method is used solely by #[deriving] to
     // assert that every component of a type implements #[deriving]
     // itself, the current deriving infrastructure means doing this
@@ -145,7 +146,7 @@ impl Ordering {
 /// - transitive, `a < b` and `b < c` implies `a < c`. The same must hold for
 ///   both `==` and `>`.
 #[unstable = "Definition may change slightly after trait reform"]
-pub trait Ord: Eq + PartialOrd {
+pub trait Ord for Sized? : Eq + PartialOrd {
     /// This method returns an ordering between `self` and `other` values.
     ///
     /// By convention, `self.cmp(&other)` returns the ordering matching
@@ -203,7 +204,7 @@ pub fn lexical_ordering(o1: Ordering, o2: Ordering) -> Ordering {
 /// 5.11).
 #[lang="ord"]
 #[unstable = "Definition may change slightly after trait reform"]
-pub trait PartialOrd: PartialEq {
+pub trait PartialOrd for Sized? : PartialEq {
     /// This method returns an ordering between `self` and `other` values
     /// if one exists.
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>;
@@ -249,7 +250,7 @@ pub trait PartialOrd: PartialEq {
 /// container types; e.g. it is often desirable to be able to use `&str`
 /// values to look up entries in a container with `String` keys.
 #[experimental = "Better solutions may be discovered."]
-pub trait Equiv<T> {
+pub trait Equiv<T> for Sized? {
     /// Implement this function to decide equivalent values.
     fn equiv(&self, other: &T) -> bool;
 }
@@ -273,6 +274,7 @@ mod impls {
     use cmp::{PartialOrd, Ord, PartialEq, Eq, Ordering,
               Less, Greater, Equal};
     use option::{Option, Some, None};
+    use kinds::Sized;
 
     macro_rules! partial_eq_impl(
         ($($t:ty)*) => ($(
@@ -380,14 +382,14 @@ mod impls {
 
     // & pointers
     #[unstable = "Trait is unstable."]
-    impl<'a, T: PartialEq> PartialEq for &'a T {
+    impl<'a, Sized? T: PartialEq> PartialEq for &'a T {
         #[inline]
         fn eq(&self, other: & &'a T) -> bool { *(*self) == *(*other) }
         #[inline]
         fn ne(&self, other: & &'a T) -> bool { *(*self) != *(*other) }
     }
     #[unstable = "Trait is unstable."]
-    impl<'a, T: PartialOrd> PartialOrd for &'a T {
+    impl<'a, Sized? T: PartialOrd> PartialOrd for &'a T {
         #[inline]
         fn partial_cmp(&self, other: &&'a T) -> Option<Ordering> {
             (**self).partial_cmp(*other)
@@ -402,23 +404,23 @@ mod impls {
         fn gt(&self, other: & &'a T) -> bool { *(*self) > *(*other) }
     }
     #[unstable = "Trait is unstable."]
-    impl<'a, T: Ord> Ord for &'a T {
+    impl<'a, Sized? T: Ord> Ord for &'a T {
         #[inline]
         fn cmp(&self, other: & &'a T) -> Ordering { (**self).cmp(*other) }
     }
     #[unstable = "Trait is unstable."]
-    impl<'a, T: Eq> Eq for &'a T {}
+    impl<'a, Sized? T: Eq> Eq for &'a T {}
 
     // &mut pointers
     #[unstable = "Trait is unstable."]
-    impl<'a, T: PartialEq> PartialEq for &'a mut T {
+    impl<'a, Sized? T: PartialEq> PartialEq for &'a mut T {
         #[inline]
         fn eq(&self, other: &&'a mut T) -> bool { **self == *(*other) }
         #[inline]
         fn ne(&self, other: &&'a mut T) -> bool { **self != *(*other) }
     }
     #[unstable = "Trait is unstable."]
-    impl<'a, T: PartialOrd> PartialOrd for &'a mut T {
+    impl<'a, Sized? T: PartialOrd> PartialOrd for &'a mut T {
         #[inline]
         fn partial_cmp(&self, other: &&'a mut T) -> Option<Ordering> {
             (**self).partial_cmp(*other)
@@ -433,10 +435,10 @@ mod impls {
         fn gt(&self, other: &&'a mut T) -> bool { **self > **other }
     }
     #[unstable = "Trait is unstable."]
-    impl<'a, T: Ord> Ord for &'a mut T {
+    impl<'a, Sized? T: Ord> Ord for &'a mut T {
         #[inline]
         fn cmp(&self, other: &&'a mut T) -> Ordering { (**self).cmp(*other) }
     }
     #[unstable = "Trait is unstable."]
-    impl<'a, T: Eq> Eq for &'a mut T {}
+    impl<'a, Sized? T: Eq> Eq for &'a mut T {}
 }
