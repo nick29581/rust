@@ -3819,7 +3819,7 @@ fn map<A: Clone, B: Clone>(f: |A| -> B, xs: &[A]) -> Vec<B> {
        return vec![];
     }
     let first: B = f(xs[0].clone());
-    let mut rest: Vec<B> = map(f, xs.slice(1, xs.len()));
+    let mut rest: Vec<B> = map(f, xs[1..xs.len()]);
     rest.insert(0, first);
     return rest;
 }

@@ -3762,7 +3762,7 @@ You can match a range of values with `..`:
 let x = 1i;
 
 match x {
-    1 .. 5 => println!("one through five"),
+    1 ... 5 => println!("one through five"),
     _ => println!("anything"),
 }
 ```
@@ -3776,7 +3776,7 @@ the value to a name with `@`:
 let x = 1i;
 
 match x {
-    x @ 1 .. 5 => println!("got {}", x),
+    x @ 1 ... 5 => println!("got {}", x),
     _ => println!("anything"),
 }
 ```
