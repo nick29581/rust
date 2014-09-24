@@ -94,7 +94,7 @@ impl FsRequest {
                 offset + written as i64
             };
             let uvbuf = uvll::uv_buf_t {
-                base: buf.slice_from(written as uint).as_ptr() as *mut _,
+                base: buf[written as uint..].as_ptr() as *mut _,
                 len: (buf.len() - written) as uvll::uv_buf_len_t,
             };
             match execute(|req, cb| unsafe {
@@ -172,7 +172,7 @@ impl FsRequest {
                                               Some(req.get_result() as uint),
                                               |rel| {
                 let p = rel.as_bytes();
-                paths.push(parent.join(p.slice_to(rel.len())).to_c_str());
+                paths.push(parent.join(p[..rel.len()]).to_c_str());
             });
             paths
         })
@@ -506,7 +506,7 @@ mod test {
 
             let nread = result.unwrap();
             assert!(nread > 0);
-            let read_str = str::from_utf8(read_mem.slice_to(nread as uint)).unwrap();
+            let read_str = str::from_utf8(read_mem[..nread as uint]).unwrap();
             assert_eq!(read_str, "hello");
         }
         // unlink

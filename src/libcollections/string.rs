@@ -159,7 +159,7 @@ impl String {
 
         if i > 0 {
             unsafe {
-                res.as_mut_vec().push_all(v.slice_to(i))
+                res.as_mut_vec().push_all(v.[..i])
             };
         }
 
@@ -176,7 +176,7 @@ impl String {
             macro_rules! error(() => ({
                 unsafe {
                     if subseqidx != i_ {
-                        res.as_mut_vec().push_all(v.slice(subseqidx, i_));
+                        res.as_mut_vec().push_all(vv[subseqidx..i_]);
                     }
                     subseqidx = i;
                     res.as_mut_vec().push_all(REPLACEMENT);
@@ -245,7 +245,7 @@ impl String {
         }
         if subseqidx < total {
             unsafe {
-                res.as_mut_vec().push_all(v.slice(subseqidx, total))
+                res.as_mut_vec().push_all(v[subseqidx..total])
             };
         }
         Owned(res.into_string())
