@@ -44,7 +44,8 @@ via `close` and `delete` methods.
        html_root_url = "http://doc.rust-lang.org/master/",
        html_playground_url = "http://play.rust-lang.org/")]
 
-#![feature(macro_rules, unsafe_destructor)]
+#![allow(unknown_features)]
+#![feature(macro_rules, unsafe_destructor, slicing_syntax)]
 #![deny(unused_result, unused_must_use)]
 
 #![reexport_test_harness_main = "test_main"]

@@ -9,7 +9,7 @@
 // except according to those terms.
 
 #![crate_type = "bin"]
-#![feature(phase)]
+#![feature(phase, slicing_syntax)]
 
 // we use our own (green) start below; do not link in libnative; issue #13247.
 #![no_start]

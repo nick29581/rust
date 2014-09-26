@@ -70,6 +70,7 @@ static KNOWN_FEATURES: &'static [(&'static str, Status)] = &[
     ("tuple_indexing", Active),
     ("associated_types", Active),
     ("visible_private_types", Active),
+    ("slicing_syntax", Active),
 
     // if you change this list without updating src/doc/rust.md, cmr will be sad
 
@@ -355,6 +356,11 @@ impl<'a, 'v> Visitor<'v> for Context<'a> {
                 self.gate_feature("tuple_indexing",
                                   e.span,
                                   "tuple indexing is experimental");
+            }
+            ast::ExprSlice(..) => {
+                self.gate_feature("slicing_syntax",
+                                  e.span,
+                                  "slicing syntax is experimental");
             }
             _ => {}
         }
