@@ -1343,8 +1343,8 @@ impl<'a> Resolver<'a> {
                             // It already exists
                             Some(ref child) if child.get_module_if_available()
                                                 .is_some() &&
-                                           child.get_module().kind.get() ==
-                                                ImplModuleKind => {
+                                           (child.get_module().kind.get() == ImplModuleKind ||
+                                            child.get_module().kind.get() == TraitModuleKind) => {
                                 ModuleReducedGraphParent(child.get_module())
                             }
                             // Create the module
