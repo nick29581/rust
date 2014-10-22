@@ -607,6 +607,16 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
          * unified during the confirmation step.
          */
 
+        let self_ty = self.infcx.shallow_resolve(obligation.self_ty());
+        let closure_def_id = match ty::get(self_ty).sty {
+            ty::ty_unboxed_closure(id, _) => id,
+            ty::ty_infer(ty::TyVar(_)) => {
+                candidates.ambiguous = true;
+                return Ok(());
+            }
+            _ => { return Ok(()); }
+        };
+
         let tcx = self.tcx();
         let kind = if Some(obligation.trait_ref.def_id) == tcx.lang_items.fn_trait() {
             ty::FnUnboxedClosureKind
@@ -616,16 +626,6 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             ty::FnOnceUnboxedClosureKind
         } else {
             return Ok(()); // not a fn trait, ignore
-        };
-
-        let self_ty = self.infcx.shallow_resolve(obligation.self_ty());
-        let closure_def_id = match ty::get(self_ty).sty {
-            ty::ty_unboxed_closure(id, _) => id,
-            ty::ty_infer(ty::TyVar(_)) => {
-                candidates.ambiguous = true;
-                return Ok(());
-            }
-            _ => { return Ok(()); }
         };
 
         debug!("assemble_unboxed_candidates: self_ty={} obligation={}",
