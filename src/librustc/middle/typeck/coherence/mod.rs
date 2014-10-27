@@ -207,8 +207,8 @@ impl<'a, 'tcx> CoherenceChecker<'a, 'tcx> {
         let impl_items = self.create_impl_from_item(item);
 
         for associated_trait in associated_traits.iter() {
-            let trait_ref = ty::node_id_to_trait_ref(
-                self.crate_context.tcx, associated_trait.ref_id);
+            let trait_ref = ty::node_id_to_trait_ref(self.crate_context.tcx,
+                                                     associated_trait.ref_id);
             debug!("(checking implementation) adding impl for trait '{}', item '{}'",
                    trait_ref.repr(self.crate_context.tcx),
                    token::get_ident(item.ident));
@@ -224,9 +224,11 @@ impl<'a, 'tcx> CoherenceChecker<'a, 'tcx> {
                                    self_type.ty) {
             None => {
                 // Nothing to do.
+                debug!("nrc - no def_id for {}", ::util::ppaux::ty_to_string(self.crate_context.tcx, self_type.ty));
             }
             Some(base_type_def_id) => {
                 // FIXME: Gather up default methods?
+                debug!("nrc - found def_id {} for {}. {} traits", base_type_def_id, ::util::ppaux::ty_to_string(self.crate_context.tcx, self_type.ty), associated_traits.len());
                 if associated_traits.len() == 0 {
                     self.add_inherent_impl(base_type_def_id, impl_did);
                 }
@@ -294,6 +296,8 @@ impl<'a, 'tcx> CoherenceChecker<'a, 'tcx> {
     }
 
     fn add_inherent_impl(&self, base_def_id: DefId, impl_def_id: DefId) {
+        debug!("add_inherent_impl: base_def_id={} impl_def_id={}",
+               base_def_id, impl_def_id);
         match self.inherent_impls.borrow().find(&base_def_id) {
             Some(implementation_list) => {
                 implementation_list.borrow_mut().push(impl_def_id);

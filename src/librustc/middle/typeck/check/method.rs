@@ -364,7 +364,7 @@ struct ExtensionCandidate {
     obligation: traits::Obligation,
     xform_self_ty: ty::t,
     method_ty: Rc<ty::Method>,
-    method_num: uint,
+    origin: MethodOrigin,
 }
 
 // A pared down enum describing just the places from which a method
@@ -553,13 +553,6 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
             None => { return; }
         };
 
-        // Check whether `trait_def_id` defines a method with suitable name:
-        if !self.has_applicable_self(&*method) {
-            debug!("method has inapplicable self");
-            return self.record_static_candidate(TraitSource(trait_def_id));
-        }
-
-        // Otherwise, construct the receiver type.
         let self_ty =
             self.fcx.infcx().next_ty_var();
         let trait_def =
@@ -568,6 +561,20 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
             self.fcx.infcx().fresh_substs_for_trait(self.span,
                                                     &trait_def.generics,
                                                     self_ty);
+
+        self.push_extension_candidate_method(trait_def_id,
+                                             method,
+                                             |trait_ref| MethodTypeParam(MethodParam{trait_ref: trait_ref.clone(),
+                                                method_num: matching_index}),
+                                             substs);
+    }
+
+    fn push_extension_candidate_method(&mut self, trait_def_id: DefId, method: Rc<ty::Method>, mk_origin: |&Rc<ty::TraitRef>| -> MethodOrigin, substs: subst::Substs) {
+        if !self.has_applicable_self(&*method) {
+            debug!("method has inapplicable self");
+            return self.record_static_candidate(TraitSource(trait_def_id));
+        }
+
         let xform_self_ty =
             self.xform_self_ty(&method, &substs);
 
@@ -575,7 +582,8 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
         let trait_ref =
             Rc::new(ty::TraitRef::new(trait_def_id, substs));
         let obligation =
-            traits::Obligation::misc(self.span, trait_ref);
+            traits::Obligation::misc(self.span, trait_ref.clone());
+            // TODO the trait impl case has no obligation, perhaps it is just an inherant call?
 
         debug!("extension-candidate(xform_self_ty={} obligation={})",
                self.infcx().ty_to_string(xform_self_ty),
@@ -585,7 +593,7 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
             obligation: obligation,
             xform_self_ty: xform_self_ty,
             method_ty: method,
-            method_num: matching_index,
+            origin: mk_origin(&trait_ref),
         });
     }
 
@@ -734,7 +742,20 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
 
             let (pos, method) = match trait_method(tcx, bound_trait_ref.def_id, self.m_name) {
                 Some(v) => v,
-                None => { continue; }
+                None => {
+                    // TODO
+                    let did = bound_trait_ref.def_id;
+                    ty::populate_implementations_for_type_if_necessary(self.tcx(), did);
+
+                    for impl_infos in self.tcx().inherent_impls.borrow().find(&did).iter() {
+                        for impl_did in impl_infos.iter() {
+                            self.push_candidates_from_inherent_trait_impl(*impl_did, did);
+                        }
+                    }
+
+                    //self.push_inherent_impl_candidates_for_type(bound_trait_ref.def_id);
+                    continue;
+                }
             };
 
             if !self.has_applicable_self(&*method) {
@@ -754,7 +775,6 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
             }
         }
     }
-
 
     fn push_inherent_impl_candidates_for_type(&mut self, did: DefId) {
         // Read the inherent implementation candidates for this type from the
@@ -806,6 +826,35 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
             origin: MethodStatic(method.def_id),
             method_ty: method,
         });
+    }
+
+    fn push_candidates_from_inherent_trait_impl(&mut self,
+                                                impl_did: DefId,
+                                                trait_did: DefId) {
+        if !self.impl_dups.insert(impl_did) {
+            return; // already visited
+        }
+
+        let method = match impl_method(self.tcx(), impl_did, self.m_name) {
+            Some(m) => m,
+            None => { return; } // No method with correct name on this impl
+        };
+
+        debug!("push_candidates_from_inherent_trait_impl: impl_did={} method={}",
+               impl_did.repr(self.tcx()),
+               method.repr(self.tcx()));
+
+        if !self.has_applicable_self(&*method) {
+            // No receiver declared. Not a candidate.
+            return self.record_static_candidate(ImplSource(impl_did));
+        }
+
+        let meth_did = method.def_id;
+
+        let span = self.self_expr.map_or(self.span, |e| e.span);
+        let impl_substs = impl_self_ty(self.fcx, span, impl_did).substs;
+
+        self.push_extension_candidate_method(trait_did, method, |_| MethodStatic(meth_did), impl_substs);
     }
 
     // ______________________________________________________________________
@@ -1157,6 +1206,7 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
                            candidates: &[Candidate])
                            -> Option<MethodResult> {
         let relevant_candidates = self.filter_candidates(rcvr_ty, candidates);
+        debug!("found {} relevant candidates", relevant_candidates.len());
 
         if relevant_candidates.len() == 0 {
             return None;
@@ -1271,8 +1321,7 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
             xform_self_ty: extension.xform_self_ty,
             rcvr_substs: extension.obligation.trait_ref.substs.clone(),
             method_ty: extension.method_ty.clone(),
-            origin: MethodTypeParam(MethodParam{trait_ref: extension.obligation.trait_ref.clone(),
-                                                method_num: extension.method_num})
+            origin: extension.origin.clone()
         };
 
         // Confirming the candidate will do the final work of
@@ -1730,11 +1779,11 @@ impl Repr for Candidate {
 
 impl Repr for ExtensionCandidate {
     fn repr(&self, tcx: &ty::ctxt) -> String {
-        format!("ExtensionCandidate(obligation={}, xform_self_ty={}, method_ty={}, method_num={})",
+        format!("ExtensionCandidate(obligation={}, xform_self_ty={}, method_ty={}, origin={})",
                 self.obligation.repr(tcx),
                 self.xform_self_ty.repr(tcx),
                 self.method_ty.repr(tcx),
-                self.method_num)
+                self.origin)
     }
 }
 
