@@ -37,7 +37,15 @@ pub fn impl_can_satisfy(infcx: &InferCtxt,
     let impl1_substs =
         util::fresh_substs_for_impl(infcx, DUMMY_SP, impl1_def_id);
     let impl1_trait_ref =
-        ty::impl_trait_ref(infcx.tcx, impl1_def_id).unwrap()
+        ty::impl_trait_ref(infcx.tcx, impl1_def_id);
+
+    if impl1_trait_ref.is_none() {
+        // TODO
+        fail!("nrc - shouldn't happen");
+    }
+
+    let impl1_trait_ref =
+        impl1_trait_ref.unwrap()
             .subst(infcx.tcx, &impl1_substs);
 
     // Determine whether `impl2` can provide an implementation for those

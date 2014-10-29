@@ -583,7 +583,6 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
             Rc::new(ty::TraitRef::new(trait_def_id, substs));
         let obligation =
             traits::Obligation::misc(self.span, trait_ref.clone());
-            // TODO the trait impl case has no obligation, perhaps it is just an inherant call?
 
         debug!("extension-candidate(xform_self_ty={} obligation={})",
                self.infcx().ty_to_string(xform_self_ty),
@@ -852,9 +851,10 @@ impl<'a, 'tcx> LookupContext<'a, 'tcx> {
         let meth_did = method.def_id;
 
         let span = self.self_expr.map_or(self.span, |e| e.span);
-        let impl_substs = impl_self_ty(self.fcx, span, impl_did).substs;
+        let impl_self_ty = impl_self_ty(self.fcx, span, impl_did);
+        let impl_substs = impl_self_ty.substs;
 
-        self.push_extension_candidate_method(trait_did, method, |_| MethodStatic(meth_did), impl_substs);
+        self.push_extension_candidate_method(trait_did, method, |_| MethodStatic(meth_did), impl_substs.with_self_ty(impl_self_ty.ty));
     }
 
     // ______________________________________________________________________

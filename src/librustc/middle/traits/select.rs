@@ -514,7 +514,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         // and `Rc<Baz>`. (Note that it is not a *coherence violation*
         // to have impls for both `Bar` and `Baz`, despite this
         // ambiguity).  In this case, we report an error, listing all
-        // the applicable impls.  The use can explicitly "up-coerce"
+        // the applicable impls.  The user can explicitly "up-coerce"
         // to the type they want.
         //
         // Note that this coercion step only considers actual impls
@@ -526,10 +526,12 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         let mut impls =
             self.assemble_method_candidates_from_impls(rcvr_ty, xform_self_ty, obligation);
 
+        debug!("nrc 1: {}", impls.len());
         if impls.len() > 1 {
             impls.retain(|&c| self.winnow_method_impl(c, rcvr_ty, xform_self_ty, obligation));
         }
 
+        debug!("nrc 2: {}", impls.len());
         if impls.len() > 1 {
             return MethodAmbiguous(impls);
         }
@@ -615,10 +617,13 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         let mut candidates = Vec::new();
 
         let all_impls = self.all_impls(obligation.trait_ref.def_id);
+        debug!("nrc all impls for {}: {}", obligation.trait_ref.def_id, all_impls.len());
         for &impl_def_id in all_impls.iter() {
             self.infcx.probe(|| {
                 match self.match_method_coerce(impl_def_id, rcvr_ty, xform_self_ty, obligation) {
-                    Ok(_) => { candidates.push(impl_def_id); }
+                    Ok(_) => { 
+                        debug!("nrc - found candidate method by coercion: {}", impl_def_id);
+                        candidates.push(impl_def_id); }
                     Err(_) => { }
                 }
             });
@@ -1709,10 +1714,14 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                                                       obligation.cause.span,
                                                       impl_def_id);
 
-        let impl_trait_ref = ty::impl_trait_ref(self.tcx(),
-                                                impl_def_id).unwrap();
-        let impl_trait_ref = impl_trait_ref.subst(self.tcx(),
-                                                  &impl_substs);
+        let impl_trait_ref = ty::impl_trait_ref(self.tcx(), impl_def_id);
+        if impl_trait_ref.is_none() {
+            // TODO
+            fail!("nrc - huh?");
+        }
+
+        let impl_trait_ref = impl_trait_ref.unwrap().subst(self.tcx(),
+                                                           &impl_substs);
 
         match self.match_trait_refs(obligation, impl_trait_ref) {
             Ok(()) => Ok(impl_substs),
@@ -1730,6 +1739,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                trait_ref.repr(self.tcx()));
 
         let origin = infer::RelateOutputImplTypes(obligation.cause.span);
+        // TODO one of the trait refs has a region variable, the other doesn't - why?
         match self.infcx.sub_trait_refs(false,
                                         origin,
                                         trait_ref,
@@ -1912,9 +1922,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
 
     fn all_impls(&self, trait_def_id: ast::DefId) -> Vec<ast::DefId> {
         /*!
-         * Returns se tof all impls for a given trait.
+         * Returns set of all impls for a given trait.
          */
-
         ty::populate_implementations_for_trait_if_necessary(self.tcx(),
                                                             trait_def_id);
         match self.tcx().trait_impls.borrow().find(&trait_def_id) {

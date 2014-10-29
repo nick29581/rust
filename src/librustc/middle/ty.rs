@@ -3205,6 +3205,42 @@ pub fn node_id_item_substs(cx: &ctxt, id: ast::NodeId) -> ItemSubsts {
     }
 }
 
+pub fn ast_ty_to_trait_ref(cx: &ctxt, ty: &ast::Ty) -> Rc<ty::TraitRef> {
+    match cx.ast_ty_to_ty_cache.borrow().find(&ty.id) {
+        Some(&atttce_resolved(t)) => match get(t).sty {
+            ty_trait(ref tt) => {
+                let substs = tt.substs.with_self_ty(t);
+                Rc::new(TraitRef{ substs: substs, def_id: tt.def_id })
+            }
+            ref t => cx.sess.bug(
+               format!("expected a ty_trait, found {}", t).as_slice())
+        },
+        _ => cx.sess.bug(
+               format!("No type cached for {}", ty).as_slice())
+    }
+    
+    
+    /*match ty.node {
+        ast::TyPath(refpath, _, id) => {
+            let def = cx.def_map.borrow().find(&id).unwrap();
+            match def {
+                &def::DefTrait(id) => {
+                    if id.krate == LOCAL_CRATE {
+                        node_id_to_trait_ref(cx, id.node)
+                    } else {
+                        // TODO
+                        fail!("trait in exeternal crate");
+                    }
+                }
+                _ => cx.sess.bug(
+                   format!("expected a DefTrait, found {}", def).as_slice())
+            }
+        }
+        _ => cx.sess.bug(
+           format!("expected a TyPath, found {}", ty.node).as_slice())
+    }*/
+}
+
 pub fn fn_is_variadic(fty: t) -> bool {
     match get(fty).sty {
         ty_bare_fn(ref f) => f.sig.variadic,
@@ -4163,10 +4199,14 @@ pub fn impl_trait_ref(cx: &ctxt, id: ast::DefId) -> Option<Rc<TraitRef>> {
             match cx.map.find(id.node) {
                 Some(ast_map::NodeItem(item)) => {
                     match item.node {
-                        ast::ItemImpl(_, ref opt_trait, _, _) => {
+                        ast::ItemImpl(_, ref opt_trait, ref base_ty, _) => {
                             match opt_trait {
                                 &Some(ref t) => {
-                                    Some(ty::node_id_to_trait_ref(cx, t.ref_id))
+                                    Some(node_id_to_trait_ref(cx, t.ref_id))
+                                }
+                                // TODO remove this - deal with inheriant trait impls elsewhere
+                                &None if type_is_trait(lookup_item_type(cx, id).ty) => {
+                                    Some(ast_ty_to_trait_ref(cx, &**base_ty))
                                 }
                                 &None => None
                             }
@@ -4183,9 +4223,13 @@ pub fn impl_trait_ref(cx: &ctxt, id: ast::DefId) -> Option<Rc<TraitRef>> {
 }
 
 pub fn trait_ref_to_def_id(tcx: &ctxt, tr: &ast::TraitRef) -> ast::DefId {
+    ref_to_def_id(tcx, tr.ref_id)
+}
+
+pub fn ref_to_def_id(tcx: &ctxt, ref_id: ast::NodeId) -> ast::DefId {
     let def = *tcx.def_map.borrow()
-                     .find(&tr.ref_id)
-                     .expect("no def-map entry for trait");
+                     .find(&ref_id)
+                     .expect("no def-map entry for ref");
     def.def_id()
 }
 

@@ -231,6 +231,11 @@ impl<'a, 'tcx> CoherenceChecker<'a, 'tcx> {
                 debug!("nrc - found def_id {} for {}. {} traits", base_type_def_id, ::util::ppaux::ty_to_string(self.crate_context.tcx, self_type.ty), associated_traits.len());
                 if associated_traits.len() == 0 {
                     self.add_inherent_impl(base_type_def_id, impl_did);
+
+                    // TODO comment
+                    if ty::type_is_trait(self_type.ty) {
+                        self.add_trait_impl(base_type_def_id, impl_did);
+                    }
                 }
             }
         }
