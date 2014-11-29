@@ -567,13 +567,13 @@ impl<'a, 'tcx> AstConv<'tcx> for Context<'a, 'tcx>{
                                _: Option<Ty<'tcx>>,
                                trait_id: ast::DefId,
                                associated_type_id: ast::DefId)
-                               -> Ty<'tcx> {
+                               -> Option<Ty<'tcx>> {
         // FIXME(pcwalton): This is wrong.
         let trait_def = self.get_trait_def(trait_id);
         let index = ty::associated_type_parameter_index(self.tcx,
                                                         &*trait_def,
                                                         associated_type_id);
-        ty::mk_param(self.tcx, subst::TypeSpace, index, associated_type_id)
+        Some(ty::mk_param(self.tcx, subst::TypeSpace, index, associated_type_id))
     }
 }
 
