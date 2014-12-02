@@ -496,7 +496,7 @@ fn early_bound_lifetime_names(generics: &ast::Generics) -> Vec<ast::Name> {
                 &ast::BoundPredicate(ast::WhereBoundPredicate{ref bounds, ..}) => {
                     visit::walk_ty_param_bounds_helper(&mut collector, bounds);
                 }
-                _ => {}
+                &ast::EqPredicate(_) => unimplemented!()
             }
         }
     }

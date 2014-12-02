@@ -1839,7 +1839,7 @@ fn ty_generics<'tcx,AC>(this: &AC,
                 let trait_def = ty::lookup_trait_def(this.tcx(), trait_def_id);
                 let associated_type_defs = trait_def.generics.types.get_slice(subst::AssocSpace);
 
-                // Find any assocaited type bindings in the bound.
+                // Find any associated type bindings in the bound.
                 let ref segments = ast_trait_ref.trait_ref.path.segments;
                 let bindings = segments[segments.len() -1].parameters.bindings();
 
