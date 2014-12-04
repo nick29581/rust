@@ -28,6 +28,10 @@ pub enum Def {
     DefVariant(ast::DefId /* enum */, ast::DefId /* variant */, bool /* is_structure */),
     DefTy(ast::DefId, bool /* is_enum */),
     DefAssociatedTy(ast::DefId),
+    // A partially resolved path to an associated type `T::U` where `T` is a concrete
+    // type (indicated by the DefId) which implements a trait which has an associated
+    // type `U` (indicated by the Ident).
+    DefAssociatedPath(TyParamProvenance, ast::Ident),
     DefTrait(ast::DefId),
     DefPrimTy(ast::PrimTy),
     DefTyParam(ParamSpace, ast::DefId, uint),
@@ -58,11 +62,26 @@ pub enum MethodProvenance {
     FromImpl(ast::DefId),
 }
 
+#[deriving(Clone, PartialEq, Eq, Encodable, Decodable, Hash, Show)]
+pub enum TyParamProvenance {
+    FromSelf(ast::DefId),
+    FromParam(ast::DefId),
+}
+
 impl MethodProvenance {
     pub fn map(self, f: |ast::DefId| -> ast::DefId) -> MethodProvenance {
         match self {
             FromTrait(did) => FromTrait(f(did)),
             FromImpl(did) => FromImpl(f(did))
+        }
+    }
+}
+
+impl TyParamProvenance {
+    pub fn def_id(&self) -> ast::DefId {
+        match *self {
+            TyParamProvenance::FromSelf(ref did) => did.clone(),
+            TyParamProvenance::FromParam(ref did) => did.clone(),
         }
     }
 }
@@ -74,7 +93,9 @@ impl Def {
             DefForeignMod(id) | DefStatic(id, _) |
             DefVariant(_, id, _) | DefTy(id, _) | DefAssociatedTy(id) |
             DefTyParam(_, id, _) | DefUse(id) | DefStruct(id) | DefTrait(id) |
-            DefMethod(id, _, _) | DefConst(id) => {
+            DefMethod(id, _, _) | DefConst(id) |
+            DefAssociatedPath(TyParamProvenance::FromSelf(id), _) |
+            DefAssociatedPath(TyParamProvenance::FromParam(id), _) => {
                 id
             }
             DefLocal(id) |

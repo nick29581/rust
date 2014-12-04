@@ -8,21 +8,27 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Check that an associated type cannot be bound in an expression path.
+// Test type checking of uses of associated types via sugary paths.
 
 #![feature(associated_types)]
 
-trait Foo {
+pub trait Foo {
     type A;
-    fn bar() -> int;
 }
 
 impl Foo for int {
     type A = uint;
-    fn bar() -> int { 42 }
+}
+
+pub fn f1<T: Foo>(a: T, x: T::A) {}
+pub fn f2<T: Foo>(a: T) -> T::A {
+    panic!();
 }
 
 pub fn main() {
-    let x: int = Foo::<A=uint>::bar();
-    //~^ERROR unexpected binding of associated item in expression path
+    f1(2i, 4i); //~ERROR the trait `Foo` is not implemented
+    f1(2u, 4u); //~ERROR the trait `Foo` is not implemented
+    f1(2u, 4i); //~ERROR the trait `Foo` is not implemented
+
+    let _: int = f2(2i); //~ERROR mismatched types: expected `int`, found `uint`
 }

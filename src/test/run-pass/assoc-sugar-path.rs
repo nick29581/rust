@@ -8,21 +8,39 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Check that an associated type cannot be bound in an expression path.
+// Test paths to associated types using the type-parameter-only sugar.
 
 #![feature(associated_types)]
 
-trait Foo {
+pub trait Foo {
     type A;
-    fn bar() -> int;
+    fn boo(&self) -> Self::A;
 }
 
 impl Foo for int {
     type A = uint;
-    fn bar() -> int { 42 }
+    fn boo(&self) -> uint {
+        5
+    }
+}
+
+// Using a type via a function.
+pub fn bar<T: Foo>(a: T, x: T::A) -> T::A {
+    let _: T::A = a.boo();
+    x
+}
+
+// Using a type via an impl.
+trait C {
+    fn f();
+}
+struct B<X>;
+impl<T: Foo> C for B<T> {
+    fn f() {
+        let x: T::A = panic!();
+    }
 }
 
 pub fn main() {
-    let x: int = Foo::<A=uint>::bar();
-    //~^ERROR unexpected binding of associated item in expression path
+    let z: uint = bar(2i, 4u);
 }

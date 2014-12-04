@@ -8,21 +8,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Check that an associated type cannot be bound in an expression path.
+// Test that we have one and only one associated type per ref.
 
 #![feature(associated_types)]
 
-trait Foo {
+pub trait Foo {
     type A;
-    fn bar() -> int;
+}
+pub trait Bar {
+    type A;
 }
 
-impl Foo for int {
-    type A = uint;
-    fn bar() -> int { 42 }
-}
+pub fn f1<T>(a: T, x: T::A) {} //~ERROR associated type `A` not found
+pub fn f2<T: Foo + Bar>(a: T, x: T::A) {} //~ERROR ambiguous associated type `A`
 
-pub fn main() {
-    let x: int = Foo::<A=uint>::bar();
-    //~^ERROR unexpected binding of associated item in expression path
-}
+pub fn main() {}
+
