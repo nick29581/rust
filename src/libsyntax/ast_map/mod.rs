@@ -20,7 +20,7 @@ use fold::Folder;
 use parse::token;
 use print::pprust;
 use ptr::P;
-use visit::{mod, Visitor};
+use visit::{self, Visitor};
 
 use arena::TypedArena;
 use std::cell::RefCell;

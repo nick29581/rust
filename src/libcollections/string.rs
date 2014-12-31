@@ -28,7 +28,7 @@ use unicode::str as unicode_str;
 use unicode::str::Utf16Item;
 
 use slice::CloneSliceExt;
-use str::{mod, CharRange, FromStr, Utf8Error};
+use str::{self, CharRange, FromStr, Utf8Error};
 use vec::{DerefVec, Vec, as_vec};
 
 /// A growable string stored as a UTF-8 encoded buffer.

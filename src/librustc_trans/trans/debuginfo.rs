@@ -194,14 +194,14 @@ use llvm;
 use llvm::{ModuleRef, ContextRef, ValueRef};
 use llvm::debuginfo::*;
 use metadata::csearch;
-use middle::subst::{mod, Subst, Substs};
-use trans::{mod, adt, machine, type_of};
+use middle::subst::{self, Subst, Substs};
+use trans::{self, adt, machine, type_of};
 use trans::common::*;
 use trans::_match::{BindingInfo, TrByCopy, TrByMove, TrByRef};
 use trans::type_::Type;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use middle::pat_util;
-use session::config::{mod, FullDebugInfo, LimitedDebugInfo, NoDebugInfo};
+use session::config::{self, FullDebugInfo, LimitedDebugInfo, NoDebugInfo};
 use util::nodemap::{DefIdMap, NodeMap, FnvHashMap, FnvHashSet};
 use util::ppaux;
 
@@ -214,7 +214,7 @@ use syntax::util::interner::Interner;
 use syntax::codemap::{Span, Pos};
 use syntax::{ast, codemap, ast_util, ast_map};
 use syntax::ast_util::PostExpansionMethod;
-use syntax::parse::token::{mod, special_idents};
+use syntax::parse::token::{self, special_idents};
 
 const DW_LANG_RUST: c_uint = 0x9000;
 

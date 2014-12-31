@@ -35,7 +35,7 @@ use trans::machine;
 use trans::type_::Type;
 use trans::type_of;
 use middle::traits;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use middle::ty_fold;
 use middle::ty_fold::TypeFoldable;
 use util::ppaux::Repr;

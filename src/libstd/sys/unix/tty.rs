@@ -10,8 +10,8 @@
 
 use sys::fs::FileDesc;
 use prelude::*;
-use libc::{mod, c_int};
-use io::{mod, IoResult, IoError};
+use libc::{self, c_int};
+use io::{self, IoResult, IoError};
 use sys_common;
 
 pub struct TTY {

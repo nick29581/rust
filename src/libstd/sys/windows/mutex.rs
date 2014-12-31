@@ -11,7 +11,7 @@
 use prelude::*;
 
 use sync::atomic;
-use alloc::{mod, heap};
+use alloc::{self, heap};
 
 use libc::DWORD;
 use sys::sync as ffi;

@@ -570,7 +570,7 @@ pub mod types {
             pub mod posix01 {
                 use types::os::arch::c95::{c_short, c_long, time_t};
                 use types::os::arch::posix88::{dev_t, gid_t, ino_t};
-                use types::os::arch::posix88::{mode_t, off_t};
+                use types::os::arch::posix88::{selfe_t, off_t};
                 use types::os::arch::posix88::{uid_t};
 
                 pub type nlink_t = u32;
@@ -660,7 +660,7 @@ pub mod types {
             pub mod posix01 {
                 use types::os::arch::c95::{c_long, c_ulong, time_t};
                 use types::os::arch::posix88::{gid_t, ino_t};
-                use types::os::arch::posix88::{mode_t, off_t};
+                use types::os::arch::posix88::{selfe_t, off_t};
                 use types::os::arch::posix88::{uid_t};
 
                 pub type nlink_t = u32;
@@ -763,7 +763,7 @@ pub mod types {
             pub mod posix01 {
                 use types::os::arch::c95::{c_int, c_long, time_t};
                 use types::os::arch::posix88::{dev_t, gid_t, ino_t};
-                use types::os::arch::posix88::{mode_t, off_t};
+                use types::os::arch::posix88::{selfe_t, off_t};
                 use types::os::arch::posix88::{uid_t};
 
                 pub type nlink_t = u64;
@@ -1000,7 +1000,7 @@ pub mod types {
                 use types::common::c99::{uint8_t, uint32_t, int32_t};
                 use types::os::arch::c95::{c_long, time_t};
                 use types::os::arch::posix88::{dev_t, gid_t, ino_t};
-                use types::os::arch::posix88::{mode_t, off_t};
+                use types::os::arch::posix88::{selfe_t, off_t};
                 use types::os::arch::posix88::{uid_t};
 
                 pub type nlink_t = u16;
@@ -1227,7 +1227,7 @@ pub mod types {
                 use types::common::c99::{uint16_t, uint32_t, int32_t, uint64_t, int64_t};
                 use types::os::arch::c95::{c_long, time_t};
                 use types::os::arch::posix88::{dev_t, gid_t};
-                use types::os::arch::posix88::{mode_t, off_t};
+                use types::os::arch::posix88::{selfe_t, off_t};
                 use types::os::arch::posix88::{uid_t};
 
                 pub type nlink_t = u16;
@@ -1974,7 +1974,7 @@ pub mod types {
                 use types::common::c99::{uint32_t};
                 use types::os::arch::c95::{c_char, c_long, time_t};
                 use types::os::arch::posix88::{dev_t, gid_t, ino_t};
-                use types::os::arch::posix88::{mode_t, off_t, uid_t};
+                use types::os::arch::posix88::{selfe_t, off_t, uid_t};
 
                 pub type nlink_t = u16;
                 pub type blksize_t = i64;
@@ -4475,7 +4475,7 @@ pub mod funcs {
         pub mod mman {
             use types::common::c95::{c_void};
             use types::os::arch::c95::{size_t, c_int, c_char};
-            use types::os::arch::posix88::{mode_t, off_t};
+            use types::os::arch::posix88::{selfe_t, off_t};
 
             extern {
                 pub fn mlock(addr: *const c_void, len: size_t) -> c_int;

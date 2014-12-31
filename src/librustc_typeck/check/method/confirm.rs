@@ -10,10 +10,10 @@
 
 use super::probe;
 
-use check::{mod, FnCtxt, NoPreference, PreferMutLvalue, callee};
-use middle::subst::{mod, Subst};
+use check::{self, FnCtxt, NoPreference, PreferMutLvalue, callee};
+use middle::subst::{self, Subst};
 use middle::traits;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use middle::ty::{MethodCall, MethodCallee, MethodObject, MethodOrigin,
                  MethodParam, MethodStatic, MethodTraitObject, MethodTypeParam};
 use middle::ty_fold::TypeFoldable;

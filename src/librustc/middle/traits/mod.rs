@@ -16,7 +16,7 @@ pub use self::Vtable::*;
 pub use self::ObligationCauseCode::*;
 
 use middle::subst;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use middle::infer::InferCtxt;
 use std::rc::Rc;
 use std::slice::Iter;

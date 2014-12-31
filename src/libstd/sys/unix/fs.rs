@@ -10,7 +10,7 @@
 
 //! Blocking posix-based file I/O
 
-use libc::{mod, c_int, c_void};
+use libc::{self, c_int, c_void};
 use c_str::CString;
 use mem;
 use io;

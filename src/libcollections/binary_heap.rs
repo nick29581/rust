@@ -155,7 +155,7 @@ use core::mem::{zeroed, replace, swap};
 use core::ptr;
 
 use slice;
-use vec::{mod, Vec};
+use vec::{self, Vec};
 
 /// A priority queue implemented with a binary heap.
 ///

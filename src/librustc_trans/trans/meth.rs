@@ -30,7 +30,7 @@ use trans::glue;
 use trans::machine;
 use trans::type_::Type;
 use trans::type_of::*;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use middle::ty::MethodCall;
 use util::ppaux::Repr;
 

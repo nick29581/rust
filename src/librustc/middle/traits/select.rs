@@ -29,7 +29,7 @@ use super::{util};
 use middle::fast_reject;
 use middle::mem_categorization::Typer;
 use middle::subst::{Subst, Substs, VecPerParamSpace};
-use middle::ty::{mod, AsPredicate, RegionEscape, Ty};
+use middle::ty::{self, AsPredicate, RegionEscape, Ty};
 use middle::infer;
 use middle::infer::{InferCtxt, TypeFreshener};
 use middle::ty_fold::TypeFoldable;

@@ -31,7 +31,7 @@ use thread::Thread;
 use sync::atomic;
 use comm::spsc_queue as spsc;
 use comm::Receiver;
-use comm::blocking::{mod, SignalToken};
+use comm::blocking::{self, SignalToken};
 
 const DISCONNECTED: int = int::MIN;
 #[cfg(test)]

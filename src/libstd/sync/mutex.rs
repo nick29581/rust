@@ -12,7 +12,7 @@ use prelude::*;
 
 use cell::UnsafeCell;
 use kinds::marker;
-use sync::poison::{mod, TryLockError, TryLockResult, LockResult};
+use sync::poison::{self, TryLockError, TryLockResult, LockResult};
 use sys_common::mutex as sys;
 
 /// A mutual exclusion primitive useful for protecting shared data

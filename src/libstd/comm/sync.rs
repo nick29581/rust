@@ -42,8 +42,8 @@ use vec::Vec;
 use core::mem;
 
 use sync::{atomic, Mutex, MutexGuard};
-use comm::blocking::{mod, WaitToken, SignalToken};
-use comm::select::StartResult::{mod, Installed, Abort};
+use comm::blocking::{self, WaitToken, SignalToken};
+use comm::select::StartResult::{self, Installed, Abort};
 
 pub struct Packet<T> {
     /// Only field outside of the mutex. Just done for kicks, but mainly because

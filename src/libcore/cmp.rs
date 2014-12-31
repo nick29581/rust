@@ -44,7 +44,7 @@
 use self::Ordering::*;
 
 use kinds::Sized;
-use option::Option::{mod, Some, None};
+use option::Option::{self, Some, None};
 
 /// Trait for values that can be compared for equality and inequality.
 ///

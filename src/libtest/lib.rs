@@ -71,7 +71,7 @@ use std::num::{Float, FloatMath, Int};
 use std::os;
 use std::str::FromStr;
 use std::string::String;
-use std::thread::{mod, Thread};
+use std::thread::{self, Thread};
 use std::time::Duration;
 use std::thunk::{Thunk, Invoke};
 

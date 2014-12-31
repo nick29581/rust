@@ -31,7 +31,7 @@ use thunk::Thunk;
 use rt;
 use rt::mutex::NativeMutex;
 use rt::local::Local;
-use rt::thread::{mod, Thread};
+use rt::thread::{self, Thread};
 use sys_common::stack;
 use rt::unwind;
 use rt::unwind::Unwinder;

@@ -13,7 +13,7 @@ use super::{FulfillmentError, FulfillmentErrorCode,
             PredicateObligation, OutputTypeParameterMismatch};
 
 use middle::infer::InferCtxt;
-use middle::ty::{mod};
+use middle::ty::{self};
 use syntax::codemap::Span;
 use util::ppaux::{Repr, UserString};
 

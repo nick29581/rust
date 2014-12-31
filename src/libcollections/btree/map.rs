@@ -20,9 +20,9 @@ pub use self::Entry::*;
 use core::prelude::*;
 
 use self::StackOp::*;
-use super::node::{mod, Node, Found, GoDown};
+use super::node::{self, Node, Found, GoDown};
 use super::node::{Traversal, MutTraversal, MoveTraversal};
-use super::node::TraversalItem::{mod, Elem, Edge};
+use super::node::TraversalItem::{self, Elem, Edge};
 use super::node::ForceResult::{Leaf, Internal};
 use core::borrow::BorrowFrom;
 use std::hash::{Writer, Hash};
@@ -496,7 +496,7 @@ mod stack {
     use core::kinds::marker;
     use core::mem;
     use super::BTreeMap;
-    use super::super::node::{mod, Node, Fit, Split, Internal, Leaf};
+    use super::super::node::{self, Node, Fit, Split, Internal, Leaf};
     use super::super::node::handle;
     use vec::Vec;
 

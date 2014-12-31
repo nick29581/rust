@@ -60,7 +60,7 @@ use core::mem;
 use core::uint;
 
 use comm::Receiver;
-use comm::blocking::{mod, SignalToken};
+use comm::blocking::{self, SignalToken};
 
 /// The "receiver set" of the select interface. This structure is used to manage
 /// a set of receivers which are being selected over.

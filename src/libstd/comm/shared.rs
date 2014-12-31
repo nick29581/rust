@@ -27,7 +27,7 @@ use core::int;
 
 use sync::{atomic, Mutex, MutexGuard};
 use comm::mpsc_queue as mpsc;
-use comm::blocking::{mod, SignalToken};
+use comm::blocking::{self, SignalToken};
 use comm::select::StartResult;
 use comm::select::StartResult::*;
 use thread::Thread;

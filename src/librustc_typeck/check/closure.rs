@@ -15,7 +15,7 @@ use super::{check_fn, Expectation, FnCtxt};
 use astconv;
 use middle::infer;
 use middle::subst;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use rscope::RegionScope;
 use syntax::abi;
 use syntax::ast;

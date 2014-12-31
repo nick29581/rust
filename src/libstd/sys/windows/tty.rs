@@ -33,7 +33,7 @@ use super::c::{ENABLE_PROCESSED_INPUT, ENABLE_QUICK_EDIT_MODE};
 use libc::{c_int, HANDLE, LPDWORD, DWORD, LPVOID};
 use libc::{get_osfhandle, CloseHandle};
 use libc::types::os::arch::extra::LPCVOID;
-use io::{mod, IoError, IoResult, MemReader};
+use io::{self, IoError, IoResult, MemReader};
 use prelude::*;
 use ptr;
 use str::from_utf8;

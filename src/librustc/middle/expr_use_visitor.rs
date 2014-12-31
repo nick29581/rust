@@ -23,7 +23,7 @@ use self::OverloadedCallType::*;
 use middle::{def, region, pat_util};
 use middle::mem_categorization as mc;
 use middle::mem_categorization::Typer;
-use middle::ty::{mod, ParameterEnvironment, Ty};
+use middle::ty::{self, ParameterEnvironment, Ty};
 use middle::ty::{MethodCall, MethodObject, MethodTraitObject};
 use middle::ty::{MethodOrigin, MethodParam, MethodTypeParam};
 use middle::ty::{MethodStatic, MethodStaticUnboxedClosure};

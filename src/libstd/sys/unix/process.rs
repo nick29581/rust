@@ -9,9 +9,9 @@
 // except according to those terms.
 use self::Req::*;
 
-use libc::{mod, pid_t, c_void, c_int};
+use libc::{self, pid_t, c_void, c_int};
 use c_str::CString;
-use io::{mod, IoResult, IoError, EndOfFile};
+use io::{self, IoResult, IoError, EndOfFile};
 use mem;
 use os;
 use ptr;
@@ -21,7 +21,7 @@ use collections;
 use path::BytesContainer;
 use hash::Hash;
 
-use sys::{mod, retry, c, wouldblock, set_nonblocking, ms_to_timeval};
+use sys::{self, retry, c, wouldblock, set_nonblocking, ms_to_timeval};
 use sys::fs::FileDesc;
 use sys_common::helper_thread::Helper;
 use sys_common::{AsInner, mkerr_libc, timeout};

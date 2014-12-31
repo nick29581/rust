@@ -25,7 +25,7 @@ use trans::expr;
 use trans::monomorphize::MonoId;
 use trans::type_of::*;
 use trans::type_::Type;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use middle::subst::{Subst, Substs};
 use session::config::FullDebugInfo;
 use util::ppaux::Repr;

@@ -40,7 +40,7 @@ use self::MyUpgrade::*;
 use core::prelude::*;
 
 use comm::Receiver;
-use comm::blocking::{mod, SignalToken};
+use comm::blocking::{self, SignalToken};
 use core::mem;
 use sync::atomic;
 

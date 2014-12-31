@@ -13,7 +13,7 @@ use middle::subst::{FnSpace};
 use middle::traits;
 use middle::traits::{Obligation, ObligationCause};
 use middle::traits::report_fulfillment_errors;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use middle::infer;
 use std::rc::Rc;
 use syntax::ast;

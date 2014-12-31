@@ -123,7 +123,7 @@ use middle::mem_categorization as mc;
 use middle::region::CodeExtent;
 use middle::traits;
 use middle::ty::{ReScope};
-use middle::ty::{mod, Ty, MethodCall};
+use middle::ty::{self, Ty, MethodCall};
 use middle::infer;
 use middle::pat_util;
 use util::nodemap::{FnvHashMap};

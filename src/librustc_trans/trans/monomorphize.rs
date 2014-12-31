@@ -20,7 +20,7 @@ use trans::base::{trans_fn, decl_internal_rust_fn};
 use trans::base;
 use trans::common::*;
 use trans::foreign;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use util::ppaux::Repr;
 
 use syntax::abi;

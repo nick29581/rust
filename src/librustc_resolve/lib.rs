@@ -83,13 +83,13 @@ use syntax::ast::{ViewItemUse, ViewPathGlob, ViewPathList, ViewPathSimple};
 use syntax::ast::{Visibility};
 use syntax::ast;
 use syntax::ast_map;
-use syntax::ast_util::{mod, PostExpansionMethod, local_def, walk_pat};
+use syntax::ast_util::{self, PostExpansionMethod, local_def, walk_pat};
 use syntax::attr::AttrMetaMethods;
 use syntax::ext::mtwt;
-use syntax::parse::token::{mod, special_names, special_idents};
+use syntax::parse::token::{self, special_names, special_idents};
 use syntax::codemap::{Span, DUMMY_SP, Pos};
 use syntax::owned_slice::OwnedSlice;
-use syntax::visit::{mod, Visitor};
+use syntax::visit::{self, Visitor};
 
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry::{Occupied, Vacant};

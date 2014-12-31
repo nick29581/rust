@@ -22,7 +22,7 @@ use num::{cast, Float, ToPrimitive};
 use num::FpCategory as Fp;
 use ops::FnOnce;
 use result::Result::Ok;
-use slice::{mod, SliceExt};
+use slice::{self, SliceExt};
 use str::StrExt;
 
 /// A flag that specifies whether to use exponential (scientific) notation.

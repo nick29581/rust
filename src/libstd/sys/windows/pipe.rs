@@ -90,10 +90,10 @@ use c_str::CString;
 use mem;
 use ptr;
 use sync::{atomic, Mutex};
-use io::{mod, IoError, IoResult};
+use io::{self, IoError, IoResult};
 use prelude::*;
 
-use sys_common::{mod, eof};
+use sys_common::{self, eof};
 
 use super::{c, os, timer, to_utf16, decode_error_detailed};
 

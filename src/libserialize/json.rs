@@ -112,7 +112,7 @@
 //!
 //! ```rust
 //! extern crate serialize;
-//! use serialize::json::{mod, ToJson, Json};
+//! use serialize::json::{self, ToJson, Json};
 //!
 //! // A custom data structure
 //! struct ComplexNum {
@@ -152,7 +152,7 @@
 //! ```rust
 //! extern crate serialize;
 //! use std::collections::BTreeMap;
-//! use serialize::json::{mod, Json, ToJson};
+//! use serialize::json::{self, Json, ToJson};
 //!
 //! // Only generate `Decodable` trait implementation
 //! #[derive(Decodable)]

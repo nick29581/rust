@@ -15,7 +15,7 @@ use middle::region;
 use middle::subst;
 use middle::subst::{Subst};
 use middle::traits;
-use middle::ty::{mod, Ty};
+use middle::ty::{self, Ty};
 use middle::ty::liberate_late_bound_regions;
 use middle::ty_fold::{TypeFolder, TypeFoldable, super_fold_ty};
 use util::ppaux::Repr;

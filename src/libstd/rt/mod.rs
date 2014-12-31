@@ -30,7 +30,7 @@ use thread::Thread;
 use ops::FnOnce;
 use sys;
 use sys_common;
-use sys_common::thread_info::{mod, NewThread};
+use sys_common::thread_info::{self, NewThread};
 
 // Reexport some of our utilities which are expected by other crates.
 pub use self::util::{default_sched_threads, min_stack, running_on_valgrind};

@@ -74,7 +74,7 @@ use fmt;
 use hash;
 use mem;
 use ptr;
-use slice::{mod, ImmutableIntSlice};
+use slice::{self, ImmutableIntSlice};
 use str;
 use string::String;
 use core::kinds::marker;
