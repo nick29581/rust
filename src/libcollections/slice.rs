@@ -177,11 +177,11 @@ impl ElementSwaps {
     }
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 enum Direction { Pos, Neg }
 
 /// An `Index` and `Direction` together.
-#[deriving(Copy)]
+#[derive(Copy)]
 struct SizeDirection {
     size: uint,
     dir: Direction,
@@ -2596,7 +2596,7 @@ mod tests {
         assert!(values == [2, 3, 5, 6, 7]);
     }
 
-    #[deriving(Clone, PartialEq)]
+    #[derive(Clone, PartialEq)]
     struct Foo;
 
     #[test]

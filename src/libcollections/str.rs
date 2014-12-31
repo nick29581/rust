@@ -202,7 +202,7 @@ fn canonical_sort(comb: &mut [(char, u8)]) {
     }
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 enum DecompositionType {
     Canonical,
     Compatible
@@ -210,7 +210,7 @@ enum DecompositionType {
 
 /// External iterator for a string's decomposition's characters.
 /// Use with the `std::iter` module.
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Decompositions<'a> {
     kind: DecompositionType,
     iter: Chars<'a>,
@@ -284,7 +284,7 @@ impl<'a> Iterator<char> for Decompositions<'a> {
     }
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 enum RecompositionState {
     Composing,
     Purging,
@@ -293,7 +293,7 @@ enum RecompositionState {
 
 /// External iterator for a string's recomposition's characters.
 /// Use with the `std::iter` module.
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Recompositions<'a> {
     iter: Decompositions<'a>,
     state: RecompositionState,
@@ -386,7 +386,7 @@ impl<'a> Iterator<char> for Recompositions<'a> {
 
 /// External iterator for a string's UTF16 codeunits.
 /// Use with the `std::iter` module.
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Utf16Units<'a> {
     encoder: Utf16Encoder<Chars<'a>>
 }

@@ -81,8 +81,8 @@ pub trait PartialEq<Sized? Rhs = Self> for Sized? {
 /// - transitive: `a == b` and `b == c` implies `a == c`.
 #[unstable = "Definition may change slightly after trait reform"]
 pub trait Eq<Sized? Rhs = Self> for Sized?: PartialEq<Rhs> {
-    // FIXME #13101: this method is used solely by #[deriving] to
-    // assert that every component of a type implements #[deriving]
+    // FIXME #13101: this method is used solely by #[derive] to
+    // assert that every component of a type implements #[derive]
     // itself, the current deriving infrastructure means doing this
     // assertion without using a method on this trait is nearly
     // impossible.
@@ -94,7 +94,7 @@ pub trait Eq<Sized? Rhs = Self> for Sized?: PartialEq<Rhs> {
 }
 
 /// An ordering is, e.g, a result of a comparison between two values.
-#[deriving(Clone, Copy, PartialEq, Show)]
+#[derive(Clone, Copy, PartialEq, Show)]
 #[stable]
 pub enum Ordering {
    /// An ordering where a compared value is less [than another].

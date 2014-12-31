@@ -1737,7 +1737,7 @@ impl<T> Vec<T> {
     /// let w = v.map_in_place(|i| i + 3);
     /// assert_eq!(w.as_slice(), [3, 4, 5].as_slice());
     ///
-    /// #[deriving(PartialEq, Show)]
+    /// #[derive(PartialEq, Show)]
     /// struct Newtype(u8);
     /// let bytes = vec![0x11, 0x22];
     /// let newtyped_bytes = bytes.map_in_place(|x| Newtype(x));
@@ -2326,7 +2326,7 @@ mod tests {
     #[test]
     fn test_map_in_place_zero_sized() {
         let v = vec![(), ()];
-        #[deriving(PartialEq, Show)]
+        #[derive(PartialEq, Show)]
         struct ZeroSized;
         assert_eq!(v.map_in_place(|_| ZeroSized), [ZeroSized, ZeroSized]);
     }
@@ -2336,11 +2336,11 @@ mod tests {
         use std::sync::atomic;
         use std::sync::atomic::AtomicUint;
 
-        #[deriving(Clone, PartialEq, Show)]
+        #[derive(Clone, PartialEq, Show)]
         struct Nothing;
         impl Drop for Nothing { fn drop(&mut self) { } }
 
-        #[deriving(Clone, PartialEq, Show)]
+        #[derive(Clone, PartialEq, Show)]
         struct ZeroSized;
         impl Drop for ZeroSized {
             fn drop(&mut self) {

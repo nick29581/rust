@@ -124,7 +124,7 @@ struct GapThenFull<K, V, M> {
 
 /// A hash that is not zero, since we use a hash of zero to represent empty
 /// buckets.
-#[deriving(PartialEq, Copy)]
+#[derive(PartialEq, Copy)]
 pub struct SafeHash {
     hash: u64,
 }

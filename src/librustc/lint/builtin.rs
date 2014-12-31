@@ -56,7 +56,7 @@ declare_lint! {
     "suggest using `loop { }` instead of `while true { }`"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct WhileTrue;
 
 impl LintPass for WhileTrue {
@@ -82,7 +82,7 @@ declare_lint! {
     "detects unnecessary type casts that can be removed"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct UnusedCasts;
 
 impl LintPass for UnusedCasts {
@@ -124,7 +124,7 @@ declare_lint! {
     "shift exceeds the type's number of bits"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct TypeLimits {
     /// Id of the last visited negated expression
     negated_expr_id: ast::NodeId,
@@ -441,7 +441,7 @@ impl<'a, 'tcx, 'v> Visitor<'v> for ImproperCTypesVisitor<'a, 'tcx> {
     }
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct ImproperCTypes;
 
 impl LintPass for ImproperCTypes {
@@ -484,7 +484,7 @@ declare_lint! {
     "use of owned (Box type) heap memory"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct BoxPointers;
 
 impl BoxPointers {
@@ -624,7 +624,7 @@ declare_lint! {
     "detects attributes that were not used by the compiler"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct UnusedAttributes;
 
 impl LintPass for UnusedAttributes {
@@ -707,7 +707,7 @@ declare_lint! {
     "path statements with no effect"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct PathStatements;
 
 impl LintPass for PathStatements {
@@ -741,7 +741,7 @@ declare_lint! {
     "unused result of an expression in a statement"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct UnusedResults;
 
 impl LintPass for UnusedResults {
@@ -809,7 +809,7 @@ declare_lint! {
     "types, variants, traits and type parameters should have camel case names"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct NonCamelCaseTypes;
 
 impl NonCamelCaseTypes {
@@ -882,7 +882,7 @@ impl LintPass for NonCamelCaseTypes {
     }
 }
 
-#[deriving(PartialEq)]
+#[derive(PartialEq)]
 enum MethodContext {
     TraitDefaultImpl,
     TraitImpl,
@@ -932,7 +932,7 @@ declare_lint! {
     "methods, functions, lifetime parameters and modules should have snake case names"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct NonSnakeCase;
 
 impl NonSnakeCase {
@@ -1045,7 +1045,7 @@ declare_lint! {
     "static constants should have uppercase identifiers"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct NonUpperCaseGlobals;
 
 impl LintPass for NonUpperCaseGlobals {
@@ -1098,7 +1098,7 @@ declare_lint! {
     "`if`, `match`, `while` and `return` do not need parentheses"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct UnusedParens;
 
 impl UnusedParens {
@@ -1192,7 +1192,7 @@ declare_lint! {
     "unnecessary braces around an imported item"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct UnusedImportBraces;
 
 impl LintPass for UnusedImportBraces {
@@ -1231,7 +1231,7 @@ declare_lint! {
     "using `Struct { x: x }` instead of `Struct { x }`"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct NonShorthandFieldPatterns;
 
 impl LintPass for NonShorthandFieldPatterns {
@@ -1264,7 +1264,7 @@ declare_lint! {
     "unnecessary use of an `unsafe` block"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct UnusedUnsafe;
 
 impl LintPass for UnusedUnsafe {
@@ -1289,7 +1289,7 @@ declare_lint! {
     "usage of an `unsafe` block"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct UnsafeBlocks;
 
 impl LintPass for UnsafeBlocks {
@@ -1313,7 +1313,7 @@ declare_lint! {
     "detect mut variables which don't need to be mutable"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct UnusedMut;
 
 impl UnusedMut {
@@ -1382,7 +1382,7 @@ declare_lint! {
     "detects unnecessary allocations that can be eliminated"
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct UnusedAllocation;
 
 impl LintPass for UnusedAllocation {
@@ -1573,7 +1573,7 @@ impl LintPass for MissingDoc {
     }
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct MissingCopyImplementations;
 
 impl LintPass for MissingCopyImplementations {
@@ -1648,7 +1648,7 @@ declare_lint! {
 
 /// Checks for use of items with `#[deprecated]`, `#[experimental]` and
 /// `#[unstable]` attributes, or no stability attribute.
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct Stability;
 
 impl Stability {
@@ -1885,7 +1885,7 @@ declare_lint!{
 
 /// Does nothing as a lint pass, but registers some `Lint`s
 /// which are used by other parts of the compiler.
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct HardwiredLints;
 
 impl LintPass for HardwiredLints {

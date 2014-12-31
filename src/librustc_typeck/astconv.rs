@@ -576,7 +576,7 @@ pub fn instantiate_trait_ref<'tcx,AC,RS>(this: &AC,
     }
 }
 
-#[deriving(PartialEq,Show)]
+#[derive(PartialEq,Show)]
 pub enum AllowEqConstraints {
     Allow,
     DontAllow

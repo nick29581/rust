@@ -23,7 +23,7 @@ use ptr::P;
 
 use std::collections::HashMap;
 
-#[deriving(PartialEq)]
+#[derive(PartialEq)]
 enum ArgumentType {
     Known(String),
     Unsigned

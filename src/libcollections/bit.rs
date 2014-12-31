@@ -1102,7 +1102,7 @@ impl<'a> RandomAccessIterator<bool> for Bits<'a> {
 /// let bv: Bitv = s.into_bitv();
 /// assert!(bv[3]);
 /// ```
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct BitvSet {
     bitv: Bitv,
 }

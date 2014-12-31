@@ -25,7 +25,7 @@ use std::cell::RefCell;
 
 use libc::c_uint;
 
-#[deriving(Clone, Copy, PartialEq, Show)]
+#[derive(Clone, Copy, PartialEq, Show)]
 #[repr(C)]
 pub struct Type {
     rf: TypeRef

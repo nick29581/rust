@@ -29,7 +29,7 @@
 //! use std::collections::BinaryHeap;
 //! use std::uint;
 //!
-//! #[deriving(Copy, Eq, PartialEq)]
+//! #[derive(Copy, Eq, PartialEq)]
 //! struct State {
 //!     cost: uint,
 //!     position: uint,
@@ -160,7 +160,7 @@ use vec::{mod, Vec};
 /// A priority queue implemented with a binary heap.
 ///
 /// This will be a max-heap.
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct BinaryHeap<T> {
     data: Vec<T>,
 }

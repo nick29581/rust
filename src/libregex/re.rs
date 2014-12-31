@@ -103,7 +103,7 @@ pub fn is_match(regex: &str, text: &str) -> Result<bool, parse::Error> {
 /// makes it much faster when searching text.
 /// More details about the `regex!` macro can be found in the `regex` crate
 /// documentation.
-#[deriving(Clone)]
+#[derive(Clone)]
 pub enum Regex {
     // The representation of `Regex` is exported to support the `regex!`
     // syntax extension. Do not rely on it.
@@ -116,7 +116,7 @@ pub enum Regex {
     Native(ExNative),
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 #[doc(hidden)]
 pub struct ExDynamic {
     original: String,
@@ -126,7 +126,7 @@ pub struct ExDynamic {
 }
 
 #[doc(hidden)]
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct ExNative {
     #[doc(hidden)]
     pub original: &'static str,

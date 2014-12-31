@@ -492,7 +492,7 @@ fn convert_associated_type<'a, 'tcx>(ccx: &CrateCtxt<'a, 'tcx>,
     }
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 enum ConvertMethodContext<'a> {
     /// Used when converting implementation methods.
     ImplConvertMethodContext,
@@ -1722,7 +1722,7 @@ fn add_unsized_bound<'tcx,AC>(this: &AC,
     }
 }
 
-#[deriving(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum CreateTypeParametersForAssociatedTypesFlag {
     DontCreateTypeParametersForAssociatedTypes,
     CreateTypeParametersForAssociatedTypes,

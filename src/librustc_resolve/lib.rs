@@ -101,7 +101,7 @@ use std::uint;
 mod check_unused;
 mod record_exports;
 
-#[deriving(Copy)]
+#[derive(Copy)]
 struct BindingInfo {
     span: Span,
     binding_mode: BindingMode,
@@ -110,20 +110,20 @@ struct BindingInfo {
 // Map from the name in a pattern to its binding mode.
 type BindingMap = HashMap<Name, BindingInfo>;
 
-#[deriving(Copy, PartialEq)]
+#[derive(Copy, PartialEq)]
 enum PatternBindingMode {
     RefutableMode,
     LocalIrrefutableMode,
     ArgumentIrrefutableMode,
 }
 
-#[deriving(Copy, PartialEq, Eq, Hash, Show)]
+#[derive(Copy, PartialEq, Eq, Hash, Show)]
 enum Namespace {
     TypeNS,
     ValueNS
 }
 
-#[deriving(Copy, PartialEq)]
+#[derive(Copy, PartialEq)]
 enum NamespaceError {
     NoError,
     ModuleError,
@@ -134,7 +134,7 @@ enum NamespaceError {
 /// A NamespaceResult represents the result of resolving an import in
 /// a particular namespace. The result is either definitely-resolved,
 /// definitely- unresolved, or unknown.
-#[deriving(Clone)]
+#[derive(Clone)]
 enum NamespaceResult {
     /// Means that resolve hasn't gathered enough information yet to determine
     /// whether the name is bound in this namespace. (That is, it hasn't
@@ -191,14 +191,14 @@ impl<'a, 'v, 'tcx> Visitor<'v> for Resolver<'a, 'tcx> {
 }
 
 /// Contains data for specific types of import directives.
-#[deriving(Copy)]
+#[derive(Copy)]
 enum ImportDirectiveSubclass {
     SingleImport(Name /* target */, Name /* source */),
     GlobImport
 }
 
 /// The context that we thread through while building the reduced graph.
-#[deriving(Clone)]
+#[derive(Clone)]
 enum ReducedGraphParent {
     ModuleReducedGraphParent(Rc<Module>)
 }
@@ -236,7 +236,7 @@ enum FallbackSuggestion {
     TraitMethod(String),
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 enum TypeParameters<'a> {
     NoTypeParameters,
     HasTypeParameters(
@@ -256,7 +256,7 @@ enum TypeParameters<'a> {
 
 // The rib kind controls the translation of local
 // definitions (`DefLocal`) to upvars (`DefUpvar`).
-#[deriving(Copy, Show)]
+#[derive(Copy, Show)]
 enum RibKind {
     // No translation needs to be applied.
     NormalRibKind,
@@ -280,13 +280,13 @@ enum RibKind {
 }
 
 // Methods can be required or provided. RequiredMethod methods only occur in traits.
-#[deriving(Copy, Show)]
+#[derive(Copy, Show)]
 enum MethodSort {
     RequiredMethod,
     ProvidedMethod(NodeId)
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 enum UseLexicalScopeFlag {
     DontUseLexicalScope,
     UseLexicalScope
@@ -297,7 +297,7 @@ enum ModulePrefixResult {
     PrefixFound(Rc<Module>, uint)
 }
 
-#[deriving(Copy, PartialEq)]
+#[derive(Copy, PartialEq)]
 enum NameSearchType {
     /// We're doing a name search in order to resolve a `use` directive.
     ImportSearch,
@@ -307,7 +307,7 @@ enum NameSearchType {
     PathSearch,
 }
 
-#[deriving(Copy)]
+#[derive(Copy)]
 enum BareIdentifierPatternResolution {
     FoundStructOrEnumVariant(Def, LastPrivate),
     FoundConst(Def, LastPrivate),
@@ -316,7 +316,7 @@ enum BareIdentifierPatternResolution {
 
 // Specifies how duplicates should be handled when adding a child item if
 // another item exists with the same name in some namespace.
-#[deriving(Copy, PartialEq)]
+#[derive(Copy, PartialEq)]
 enum DuplicateCheckingMode {
     ForbidDuplicateModules,
     ForbidDuplicateTypesAndModules,
@@ -326,7 +326,7 @@ enum DuplicateCheckingMode {
 }
 
 /// One local scope.
-#[deriving(Show)]
+#[derive(Show)]
 struct Rib {
     bindings: HashMap<Name, DefLike>,
     kind: RibKind,
@@ -342,7 +342,7 @@ impl Rib {
 }
 
 /// Whether an import can be shadowed by another import.
-#[deriving(Show,PartialEq,Clone,Copy)]
+#[derive(Show,PartialEq,Clone,Copy)]
 enum Shadowable {
     Always,
     Never
@@ -378,7 +378,7 @@ impl ImportDirective {
 }
 
 /// The item that an import resolves to.
-#[deriving(Clone)]
+#[derive(Clone)]
 struct Target {
     target_module: Rc<Module>,
     bindings: Rc<NameBindings>,
@@ -478,7 +478,7 @@ impl ImportResolution {
 }
 
 /// The link from a module up to its nearest parent node.
-#[deriving(Clone)]
+#[derive(Clone)]
 enum ParentLink {
     NoParentLink,
     ModuleParentLink(Weak<Module>, Name),
@@ -486,7 +486,7 @@ enum ParentLink {
 }
 
 /// The type of module this is.
-#[deriving(Copy, PartialEq)]
+#[derive(Copy, PartialEq)]
 enum ModuleKind {
     NormalModuleKind,
     TraitModuleKind,
@@ -569,7 +569,7 @@ impl Module {
 }
 
 bitflags! {
-    #[deriving(Show)]
+    #[derive(Show)]
     flags DefModifiers: u8 {
         const PUBLIC            = 0b0000_0001,
         const IMPORTABLE        = 0b0000_0010,
@@ -577,7 +577,7 @@ bitflags! {
 }
 
 // Records a possibly-private type definition.
-#[deriving(Clone)]
+#[derive(Clone)]
 struct TypeNsDef {
     modifiers: DefModifiers, // see note in ImportResolution about how to use this
     module_def: Option<Rc<Module>>,
@@ -586,7 +586,7 @@ struct TypeNsDef {
 }
 
 // Records a possibly-private value definition.
-#[deriving(Clone, Copy, Show)]
+#[derive(Clone, Copy, Show)]
 struct ValueNsDef {
     modifiers: DefModifiers, // see note in ImportResolution about how to use this
     def: Def,
@@ -601,7 +601,7 @@ struct NameBindings {
 }
 
 /// Ways in which a trait can be referenced
-#[deriving(Copy)]
+#[derive(Copy)]
 enum TraitReferenceType {
     TraitImplementation,             // impl SomeTrait for T { ... }
     TraitDerivation,                 // trait T : SomeTrait { ... }
@@ -979,7 +979,7 @@ impl<'a, 'b, 'v, 'tcx> Visitor<'v> for BuildReducedGraphVisitor<'a, 'b, 'tcx> {
 
 }
 
-#[deriving(PartialEq)]
+#[derive(PartialEq)]
 enum FallbackChecks {
     Everything,
     OnlyTraitAndStatics
@@ -6101,7 +6101,7 @@ pub struct CrateMap {
     pub glob_map: Option<GlobMap>
 }
 
-#[deriving(PartialEq,Copy)]
+#[derive(PartialEq,Copy)]
 pub enum MakeGlobMap {
     Yes,
     No

@@ -893,7 +893,7 @@ pub struct Splits<'a, T:'a, P> where P: FnMut(&T) -> bool {
     finished: bool
 }
 
-// FIXME(#19839) Remove in favor of `#[deriving(Clone)]`
+// FIXME(#19839) Remove in favor of `#[derive(Clone)]`
 #[stable]
 impl<'a, T, P> Clone for Splits<'a, T, P> where P: Clone + FnMut(&T) -> bool {
     fn clone(&self) -> Splits<'a, T, P> {
@@ -1062,7 +1062,7 @@ impl<E, I: SplitsIter<E>> Iterator<E> for SplitsN<I> {
 }
 
 /// An iterator over overlapping subslices of length `size`.
-#[deriving(Clone)]
+#[derive(Clone)]
 #[experimental = "needs review"]
 pub struct Windows<'a, T:'a> {
     v: &'a [T],
@@ -1097,7 +1097,7 @@ impl<'a, T> Iterator<&'a [T]> for Windows<'a, T> {
 ///
 /// When the slice len is not evenly divided by the chunk size, the last slice
 /// of the iteration will be the remainder.
-#[deriving(Clone)]
+#[derive(Clone)]
 #[experimental = "needs review"]
 pub struct Chunks<'a, T:'a> {
     v: &'a [T],
@@ -1231,7 +1231,7 @@ impl<'a, T> DoubleEndedIterator<&'a mut [T]> for MutChunks<'a, T> {
 /// index of the matching element. `NotFound` means the search
 /// succeeded, and the contained value is an index where a matching
 /// value could be inserted while maintaining sort order.
-#[deriving(Copy, PartialEq, Show)]
+#[derive(Copy, PartialEq, Show)]
 #[experimental = "needs review"]
 pub enum BinarySearchResult {
     /// The index of the found value.
