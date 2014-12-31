@@ -71,7 +71,7 @@
 // lldb-command:continue
 
 
-#[deriving(Clone)]
+#[derive(Clone)]
 struct Struct {
     a: int,
     b: f64

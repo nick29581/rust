@@ -71,13 +71,13 @@
 // lldb-check:[...]$6 = Case1 { x: 0, y: 8970181431921507452 }
 // lldb-command:continue
 
-#[deriving(Clone)]
+#[derive(Clone)]
 struct Struct {
     a: int,
     b: f64
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 struct StructStruct {
     a: Struct,
     b: Struct
