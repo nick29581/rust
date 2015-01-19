@@ -1252,21 +1252,21 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DxrVisitor<'l, 'tcx> {
             ast::ViewItemExternCrate(ident, ref s, id) => {
                 let name = get_ident(ident);
                 let name = name.get();
-                let s = match *s {
+                let location = match *s {
                     Some((ref s, _)) => s.get().to_string(),
                     None => name.to_string(),
                 };
-                let sub_span = self.span.sub_span_after_keyword(i.span, keywords::Crate);
+                let alias_span = self.span.span_for_last_ident(i.span);
                 let cnum = match self.sess.cstore.find_extern_mod_stmt_cnum(id) {
                     Some(cnum) => cnum,
                     None => 0,
                 };
                 self.fmt.extern_crate_str(i.span,
-                                          sub_span,
+                                          alias_span,
                                           id,
                                           cnum,
                                           name,
-                                          &s[],
+                                          &location[],
                                           self.cur_scope);
             },
         }
