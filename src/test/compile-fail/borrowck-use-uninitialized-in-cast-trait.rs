@@ -16,5 +16,5 @@ impl Foo for i32 { }
 
 fn main() {
     let x: &i32;
-    let y = x as *const Foo; //~ ERROR use of possibly uninitialized variable: `*x`
+    let y = x as *const Foo; //~ ERROR use of possibly uninitialized variable: `x`
 }
