@@ -69,7 +69,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::codemap::{respan, Spanned, Span};
 use syntax::owned_slice::OwnedSlice;
-use syntax::parse::token::{self, str_to_ident};
+use syntax::parse::token::{self, str_to_ident, special_idents};
 use syntax::std_inject;
 use syntax::visit::{self, Visitor};
 
@@ -582,7 +582,9 @@ pub fn lower_block(lctx: &LoweringContext, b: &Block) -> P<hir::Block> {
 
 pub fn lower_item_underscore(lctx: &LoweringContext, i: &Item_) -> hir::Item_ {
     match *i {
-        ItemExternCrate(string) => hir::ItemExternCrate(string),
+        ItemExternCrate(name) => {
+            hir::ItemExternCrate(name)
+        }
         ItemUse(ref view_path) => {
             hir::ItemUse(lower_view_path(lctx, view_path))
         }
@@ -701,18 +703,44 @@ pub fn lower_mod(lctx: &LoweringContext, m: &Mod) -> hir::Mod {
 struct ItemLowerer<'lcx, 'interner: 'lcx> {
     items: BTreeMap<NodeId, hir::Item>,
     lctx: &'lcx LoweringContext<'interner>,
+    at_top: bool,
 }
 
 impl<'lcx, 'interner> Visitor<'lcx> for ItemLowerer<'lcx, 'interner> {
-    fn visit_item(&mut self, item: &'lcx Item) {
-        self.items.insert(item.id, lower_item(self.lctx, item));
-        visit::walk_item(self, item);
+    fn visit_item(&mut self, i: &'lcx Item) {
+        if let ItemExternCrate(_) = i.node {
+            // There is no need to expand `extern crate` at the root of crates.
+            // It just creates more noise in the AST and it gives us a problem
+            // with the prelude.
+            if !self.at_top {
+                lower_extern_crate(self, i);
+                return;
+            }
+        }
+
+        let node = lower_item_underscore(self.lctx, &i.node);
+
+        let hir_item = hir::Item {
+            id: i.id,
+            name: i.ident.name,
+            attrs: i.attrs.clone(),
+            node: node,
+            vis: lower_visibility(self.lctx, i.vis),
+            span: i.span,
+        };
+
+        self.items.insert(i.id, hir_item);
+
+        let at_top = self.at_top;
+        self.at_top = false;
+        visit::walk_item(self, i);
+        self.at_top = at_top;
     }
 }
 
 pub fn lower_crate(lctx: &LoweringContext, c: &Crate) -> hir::Crate {
     let items = {
-        let mut item_lowerer = ItemLowerer { items: BTreeMap::new(), lctx: lctx };
+        let mut item_lowerer = ItemLowerer { items: BTreeMap::new(), lctx: lctx, at_top: true };
         visit::walk_crate(&mut item_lowerer, c);
         item_lowerer.items
     };
@@ -745,17 +773,77 @@ pub fn lower_item_id(_lctx: &LoweringContext, i: &Item) -> hir::ItemId {
     hir::ItemId { id: i.id }
 }
 
-pub fn lower_item(lctx: &LoweringContext, i: &Item) -> hir::Item {
-    let node = lower_item_underscore(lctx, &i.node);
+fn lower_extern_crate<'a, 'b>(lowerer: &mut ItemLowerer<'a, 'b>, i: &'a Item) {
+    // In order to make privacy checking for extern crates work correctly we
+    // lower `extern crate` to a `mod` which includes the `extern crate`
+    // privately and imports the whole contents of the crate.
+    //
+    // `[pub] extern crate foo [as bar];`
+    //      =>
+    // ```rust
+    // [pub] mod [bar|foo] {
+    //     extern crate foo as #1;
+    //     pub use self::#1::*;
+    // }
+    // ```
 
-    hir::Item {
-        id: i.id,
-        name: i.ident.name,
-        attrs: i.attrs.clone(),
-        node: node,
-        vis: lower_visibility(lctx, i.vis),
-        span: i.span,
-    }
+
+    // FIXME Could do a better job with the spans on idents.
+
+    let orig_name = if let ItemExternCrate(ref name) = i.node {
+        name.clone()
+    } else {
+        panic!("expected ItemExternCrate");
+    };
+
+    let (alias_name, orig_name) = match orig_name {
+        Some(orig_name) => (i.ident.name, orig_name),
+        None => (i.ident.name, i.ident.name),
+    };
+
+    let hir_item = cache_ids(lowerer.lctx, i.id, |lctx| {
+        let items = &mut lowerer.items;
+
+        let inner_name = lctx.str_to_ident("krate_alias");
+
+        let extern_crate = hir::Item {
+            id: lctx.next_id(),
+            name: inner_name.name,
+            // Note that we add the attributes to both the new module and the
+            // extern crate. I'm not 100% sure this is the right approach, but
+            // it seems correct.
+            attrs: i.attrs.clone(),
+            node: hir::Item_::ItemExternCrate(Some(orig_name)),
+            vis: hir::Visibility::Inherited,
+            span: i.span,
+        };
+
+        let import = item_use_glob(lctx,
+                                   i.span,
+                                   hir::Visibility::Public,
+                                   vec![special_idents::self_, inner_name]);
+
+        let inner_mod = hir::Mod {
+            inner: i.span,
+            item_ids: vec![hir::ItemId { id: extern_crate.id }, hir::ItemId { id: import.id }],
+        };
+
+        items.insert(extern_crate.id, extern_crate);
+        items.insert(import.id, import);
+
+        hir::Item {
+            // Important - we must keep the same id as the old item so the owning
+            // module's items vec is still valid.
+            id: i.id,
+            name: alias_name,
+            attrs: i.attrs.clone(),
+            node: hir::Item_::ItemMod(inner_mod),
+            vis: lower_visibility(lctx, i.vis),
+            span: i.span,
+        }
+    });
+
+    lowerer.items.insert(hir_item.id, hir_item);
 }
 
 pub fn lower_foreign_item(lctx: &LoweringContext, i: &ForeignItem) -> P<hir::ForeignItem> {
@@ -1639,6 +1727,29 @@ fn block_all(lctx: &LoweringContext,
         rules: hir::DefaultBlock,
         span: span,
     })
+}
+
+fn item_use(lctx: &LoweringContext,
+            sp: Span,
+            vis: hir::Visibility,
+            vp: P<hir::ViewPath>)
+            -> hir::Item {
+    hir::Item {
+        id: lctx.next_id(),
+        name: special_idents::invalid.name,
+        attrs: vec![],
+        node: hir::ItemUse(vp),
+        vis: vis,
+        span: sp
+    }
+}
+
+fn item_use_glob(lctx: &LoweringContext,
+                 sp: Span,
+                 vis: hir::Visibility,
+                 mod_path: Vec<Ident>)
+                 -> hir::Item {
+    item_use(lctx, sp, vis, P(respan(sp, hir::ViewPathGlob(path(sp, mod_path)))))
 }
 
 fn pat_some(lctx: &LoweringContext, span: Span, pat: P<hir::Pat>) -> P<hir::Pat> {
