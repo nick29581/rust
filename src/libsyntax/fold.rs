@@ -706,7 +706,7 @@ pub fn noop_fold_ty_param<T: Folder>(tp: TyParam, fld: &mut T) -> TyParam {
     let TyParam {id, ident, bounds, default, span} = tp;
     TyParam {
         id: fld.new_id(id),
-        ident: ident,
+        ident: fld.fold_ident(ident),
         bounds: fld.fold_bounds(bounds),
         default: default.map(|x| fld.fold_ty(x)),
         span: span

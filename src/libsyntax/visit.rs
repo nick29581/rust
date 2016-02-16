@@ -296,7 +296,7 @@ pub fn walk_item<'v, V: Visitor<'v>>(visitor: &mut V, item: &'v Item) {
         ItemKind::Struct(ref struct_definition, ref generics) => {
             visitor.visit_generics(generics);
             visitor.visit_variant_data(struct_definition, item.ident,
-                                     generics, item.id, item.span);
+                                       generics, item.id, item.span);
         }
         ItemKind::Trait(_, ref generics, ref bounds, ref methods) => {
             visitor.visit_generics(generics);

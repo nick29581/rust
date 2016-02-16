@@ -117,6 +117,7 @@ pub mod ext {
     pub mod expand;
     pub mod mtwt;
     pub mod quote;
+    pub mod scope_sets;
     pub mod source_util;
 
     pub mod tt {
