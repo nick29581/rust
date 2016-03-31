@@ -50,6 +50,7 @@ pub mod hir;
 pub mod lowering;
 pub mod fold;
 pub mod intravisit;
+pub mod scope_sets;
 pub mod util;
 
 pub mod print {

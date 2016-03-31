@@ -163,7 +163,7 @@ pub type Mrk = u32;
 pub struct Lifetime {
     pub id: NodeId,
     pub span: Span,
-    pub name: Name
+    pub name: Name,
 }
 
 impl fmt::Debug for Lifetime {

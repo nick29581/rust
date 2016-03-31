@@ -58,13 +58,14 @@
 //! current assignment context.
 
 use ast::*;
-use ext::Hygiene;
 use fold::{self, Folder};
 use ptr::P;
 use util::small_vector::SmallVector;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
+
+// TODO use this for resolution etc., put into TLS like mtwt?
 
 pub struct SetsOfScopes {
     sets: Vec<ScopeSet>,
@@ -78,22 +79,15 @@ impl SetsOfScopes {
     }
 }
 
-// TODO doesn't really make sense, need to present a lookup interface - screws the current approach with the HIR
-impl Hygiene for SetsOfScopes {
-    fn resolve(&self, id: Ident) -> Name {
-        unimplemented!();
-    }
-}
-
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
-struct Scope(u32);
+pub struct Scope(u32);
 
 impl Scope {
-    fn is_inside_edge(self) -> bool {
+    pub fn is_inside_edge(self) -> bool {
         self.0 & 0x8000_0000 == 0
     }
 
-    fn is_outside_edge(self) -> bool {
+    pub fn is_outside_edge(self) -> bool {
         self.0 & 0x8000_0000 == 1
     }
 
@@ -107,11 +101,11 @@ impl Scope {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ScopeSet(HashSet<Scope>);
+pub struct ScopeSet(HashSet<Scope>);
 
 // TODO move into sub-mod, separate out folder
 /// Assigns scopes to idents in an AST.
-struct ScopeAssigner {
+pub struct ScopeAssigner {
     // Interned scope sets.
     sets: RefCell<Vec<ScopeSet>>,
     // Stack of scope sets for statements and expressions.
@@ -130,7 +124,7 @@ enum AssignmentContext {
 
 impl ScopeAssigner {
     /// Create a new, empty ScopeAssigner.
-    fn new() -> ScopeAssigner {
+    pub fn new() -> ScopeAssigner {
         let mut top = ScopeSet(HashSet::new());
         top.0.insert(Scope(1));
         top.0.insert(Scope(1).outside_edge());
@@ -142,6 +136,10 @@ impl ScopeAssigner {
             next_scope: Cell::new(2),
             context: AssignmentContext::Item,
         }
+    }
+
+    pub fn sets_of_scopes(self) -> SetsOfScopes {
+        SetsOfScopes::from_sets_table(self.sets.into_inner())
     }
 
     /// Execute `f` in item context, then restore the context afterwards.
