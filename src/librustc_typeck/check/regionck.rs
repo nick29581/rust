@@ -87,6 +87,7 @@ use check::FnCtxt;
 use middle::free_region::FreeRegionMap;
 use middle::mem_categorization as mc;
 use middle::mem_categorization::Categorization;
+use middle::expr_use_visitor::{Delegate, ExprUseVisitor, ConsumeMode, MutateMode, LoanCause, MatchMode};
 use middle::region::{self, CodeExtent};
 use rustc::ty::subst::Substs;
 use rustc::traits;
@@ -189,6 +190,18 @@ pub struct Rcx<'a, 'tcx: 'a> {
 
 pub struct RepeatingScope(ast::NodeId);
 pub enum SubjectNode { Subject(ast::NodeId), None }
+
+struct UpvarLink<'tcx> {
+    span: Span,
+    borrow_region: ty::Region,
+    borrow_kind: ty::BorrowKind,
+    borrow_cmt: mc::cmt<'tcx>,
+}
+
+// TODO docs
+struct UpvarDelegate<'tcx> {
+    links: Vec<UpvarLink<'tcx>>,
+}
 
 impl<'a, 'tcx> Rcx<'a, 'tcx> {
     pub fn new(fcx: &'a FnCtxt<'a, 'tcx>,
@@ -476,6 +489,61 @@ impl<'a, 'tcx, 'v> Visitor<'v> for Rcx<'a, 'tcx> {
     fn visit_local(&mut self, l: &hir::Local) { visit_local(self, l); }
 
     fn visit_block(&mut self, b: &hir::Block) { visit_block(self, b); }
+}
+
+impl<'tcx> Delegate<'tcx> for UpvarDelegate<'tcx> {
+    fn consume(&mut self,
+               _consume_id: ast::NodeId,
+               _consume_span: Span,
+               _cmt: mc::cmt<'tcx>,
+               _mode: ConsumeMode) {
+        // No-op
+    }
+
+    fn matched_pat(&mut self,
+                   _matched_pat: &hir::Pat,
+                   _cmt: mc::cmt<'tcx>,
+                   _mode: MatchMode) {
+        unreachable!();
+    }
+
+    fn consume_pat(&mut self,
+                   _consume_pat: &hir::Pat,
+                   _cmt: mc::cmt<'tcx>,
+                   _mode: ConsumeMode) {
+        unreachable!();
+    }
+
+    fn borrow(&mut self,
+              _borrow_id: ast::NodeId,
+              borrow_span: Span,
+              cmt: mc::cmt<'tcx>,
+              loan_region: ty::Region,
+              bk: ty::BorrowKind,
+              _loan_cause: LoanCause) {
+        let link = UpvarLink {
+            span: borrow_span,
+            borrow_region: loan_region,
+            borrow_kind: bk,
+            borrow_cmt: cmt,
+        };
+        self.links.push(link);
+    }
+
+    fn decl_without_init(&mut self,
+                         _id: ast::NodeId,
+                         _span: Span) {
+        unreachable!();
+    }
+
+    fn mutate(&mut self,
+              _assignment_id: ast::NodeId,
+              _assignment_span: Span,
+              _assignee_cmt: mc::cmt<'tcx>,
+              _mode: MutateMode) {
+        unreachable!();
+    }
+
 }
 
 fn visit_block(rcx: &mut Rcx, b: &hir::Block) {
@@ -782,6 +850,20 @@ fn visit_expr(rcx: &mut Rcx, expr: &hir::Expr) {
         }
 
         hir::ExprClosure(_, _, ref body, _) => {
+            {
+                // TODO horrible borrow checking issue
+                //   collect details for UpVars in delegate, then link them all afterwards
+                let mut delegate = UpvarDelegate { links: vec![] };
+                {
+                    let mut euv = ExprUseVisitor::new(&mut delegate, rcx.infcx());
+                    euv.walk_expr(expr);
+                }
+
+                for l in delegate.links {
+                    link_region(rcx, l.span, &l.borrow_region, l.borrow_kind, l.borrow_cmt);
+                }
+            }
+
             check_expr_fn_block(rcx, expr, &body);
         }
 
@@ -1252,18 +1334,18 @@ fn link_region_from_node_type<'a, 'tcx>(rcx: &Rcx<'a, 'tcx>,
                                         span: Span,
                                         id: ast::NodeId,
                                         mutbl: hir::Mutability,
-                                        cmt_borrowed: mc::cmt<'tcx>) {
-    debug!("link_region_from_node_type(id={:?}, mutbl={:?}, cmt_borrowed={:?})",
-           id, mutbl, cmt_borrowed);
+                                        borrow_cmt: mc::cmt<'tcx>) {
+    debug!("link_region_from_node_type(id={:?}, mutbl={:?}, borrow_cmt={:?})",
+           id, mutbl, borrow_cmt);
 
     let rptr_ty = rcx.resolve_node_type(id);
     if let ty::TyRef(&r, _) = rptr_ty.sty {
         debug!("rptr_ty={}",  rptr_ty);
-        link_region(rcx, span, &r, ty::BorrowKind::from_mutbl(mutbl),
-                    cmt_borrowed);
+        link_region(rcx, span, &r, ty::BorrowKind::from_mutbl(mutbl), borrow_cmt);
     }
 }
 
+// TODO comment
 /// Informs the inference engine that `borrow_cmt` is being borrowed with kind `borrow_kind` and
 /// lifetime `borrow_region`. In order to ensure borrowck is satisfied, this may create constraints
 /// between regions, as explained in `link_reborrowed_region()`.
@@ -1278,16 +1360,16 @@ fn link_region<'a, 'tcx>(rcx: &Rcx<'a, 'tcx>,
     let origin = infer::DataBorrowed(borrow_cmt.ty, span);
     type_must_outlive(rcx, origin, borrow_cmt.ty, *borrow_region);
 
+    // TODO name
+    let mut first = true;
     loop {
         debug!("link_region(borrow_region={:?}, borrow_kind={:?}, borrow_cmt={:?})",
                borrow_region,
                borrow_kind,
                borrow_cmt);
         match borrow_cmt.cat.clone() {
-            Categorization::Deref(ref_cmt, _,
-                                  mc::Implicit(ref_kind, ref_region)) |
-            Categorization::Deref(ref_cmt, _,
-                                  mc::BorrowedPtr(ref_kind, ref_region)) => {
+            Categorization::Deref(ref_cmt, _, mc::Implicit(ref_kind, ref_region)) |
+            Categorization::Deref(ref_cmt, _, mc::BorrowedPtr(ref_kind, ref_region)) => {
                 match link_reborrowed_region(rcx, span,
                                              borrow_region, borrow_kind,
                                              ref_cmt, ref_region, ref_kind,
@@ -1295,6 +1377,7 @@ fn link_region<'a, 'tcx>(rcx: &Rcx<'a, 'tcx>,
                     Some((c, k)) => {
                         borrow_cmt = c;
                         borrow_kind = k;
+                        first = false;
                     }
                     None => {
                         return;
@@ -1316,10 +1399,54 @@ fn link_region<'a, 'tcx>(rcx: &Rcx<'a, 'tcx>,
             Categorization::Upvar(..) |
             Categorization::Local(..) |
             Categorization::Rvalue(..) => {
+                // TODO not catching errors where we don't live long enough, but don't do any referencing
+                // In this case we need to link before returning.
+                if first {
+                    let ref_region = scope(rcx, &borrow_cmt);
+                    // TODO replace infer::AddrOf with something custom with the cmt in
+                    rcx.fcx.mk_subr(infer::AddrOf(span), *borrow_region, ref_region);
+                }
+
+                // TODO fix this message
                 // These are all "base cases" with independent lifetimes
                 // that are not subject to inference
                 return;
             }
+        }
+    }
+}
+
+// TODO copy pasta
+fn scope<'a, 'tcx>(rcx: &Rcx<'a, 'tcx>, cmt: &mc::cmt) -> ty::Region {
+    //! Returns the maximal region scope for the which the
+    //! lvalue `cmt` is guaranteed to be valid without any
+    //! rooting etc, and presuming `cmt` is not mutated.
+
+    match cmt.cat {
+        Categorization::Rvalue(temp_scope) => {
+            temp_scope
+        }
+        Categorization::Upvar(..) => {
+            let body_region = rcx.tcx().region_maps.node_extent(rcx.body_id);
+            ty::ReScope(body_region)
+        }
+        Categorization::StaticItem => {
+            ty::ReStatic
+        }
+        Categorization::Local(local_id) => {
+            ty::ReScope(rcx.tcx().region_maps.var_scope(local_id))
+        }
+        Categorization::Deref(_, _, mc::UnsafePtr(..)) => {
+            ty::ReStatic
+        }
+        Categorization::Deref(_, _, mc::BorrowedPtr(_, r)) |
+        Categorization::Deref(_, _, mc::Implicit(_, r)) => {
+            r
+        }
+        Categorization::Downcast(ref cmt, _) |
+        Categorization::Deref(ref cmt, _, mc::Unique) |
+        Categorization::Interior(ref cmt, _) => {
+            scope(rcx, cmt)
         }
     }
 }

@@ -74,7 +74,6 @@ use self::Aliasability::*;
 use hir::def_id::DefId;
 use hir::map as ast_map;
 use infer;
-use middle::const_qualif::ConstQualif;
 use hir::def::Def;
 use ty::adjustment;
 use ty::{self, Ty, TyCtxt};
@@ -796,24 +795,13 @@ impl<'t, 'a,'tcx> MemCategorizationContext<'t, 'a, 'tcx> {
                            span: Span,
                            expr_ty: Ty<'tcx>)
                            -> cmt<'tcx> {
-        let qualif = self.tcx().const_qualif_map.borrow().get(&id).cloned()
-                               .unwrap_or(ConstQualif::NOT_CONST);
-
         // Only promote `[T; 0]` before an RFC for rvalue promotions
         // is accepted.
-        let qualif = match expr_ty.sty {
-            ty::TyArray(_, 0) => qualif,
-            _ => ConstQualif::NOT_CONST
+        let re = match expr_ty.sty {
+            ty::TyArray(_, 0) => ty::ReStatic,
+            _ => self.temporary_scope(id),
         };
 
-        // Compute maximum lifetime of this rvalue. This is 'static if
-        // we can promote to a constant, otherwise equal to enclosing temp
-        // lifetime.
-        let re = if qualif.intersects(ConstQualif::NON_STATIC_BORROWS) {
-            self.temporary_scope(id)
-        } else {
-            ty::ReStatic
-        };
         let ret = self.cat_rvalue(id, span, re, expr_ty);
         debug!("cat_rvalue_node ret {:?}", ret);
         ret

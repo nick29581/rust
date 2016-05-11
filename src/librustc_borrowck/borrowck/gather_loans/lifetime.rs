@@ -12,7 +12,6 @@
 //! does not exceed the lifetime of the value being borrowed.
 
 use borrowck::*;
-use rustc::middle::expr_use_visitor as euv;
 use rustc::middle::mem_categorization as mc;
 use rustc::middle::mem_categorization::Categorization;
 use rustc::middle::region;
@@ -26,7 +25,6 @@ type R = Result<(),()>;
 pub fn guarantee_lifetime<'a, 'tcx>(bccx: &BorrowckCtxt<'a, 'tcx>,
                                     item_scope: region::CodeExtent,
                                     span: Span,
-                                    cause: euv::LoanCause,
                                     cmt: mc::cmt<'tcx>,
                                     loan_region: ty::Region,
                                     _: ty::BorrowKind)
@@ -39,9 +37,7 @@ pub fn guarantee_lifetime<'a, 'tcx>(bccx: &BorrowckCtxt<'a, 'tcx>,
     let ctxt = GuaranteeLifetimeContext {bccx: bccx,
                                          item_scope: item_scope,
                                          span: span,
-                                         cause: cause,
-                                         loan_region: loan_region,
-                                         cmt_original: cmt.clone()};
+                                         loan_region: loan_region};
     ctxt.check(&cmt, None)
 }
 
@@ -55,9 +51,7 @@ struct GuaranteeLifetimeContext<'a, 'tcx: 'a> {
     item_scope: region::CodeExtent,
 
     span: Span,
-    cause: euv::LoanCause,
     loan_region: ty::Region,
-    cmt_original: mc::cmt<'tcx>
 }
 
 impl<'a, 'tcx> GuaranteeLifetimeContext<'a, 'tcx> {
@@ -77,7 +71,8 @@ impl<'a, 'tcx> GuaranteeLifetimeContext<'a, 'tcx> {
             Categorization::Deref(_, _, mc::BorrowedPtr(..)) |  // L-Deref-Borrowed
             Categorization::Deref(_, _, mc::Implicit(..)) |
             Categorization::Deref(_, _, mc::UnsafePtr(..)) => {
-                self.check_scope(self.scope(cmt))
+                self.check_scope(self.scope(cmt));
+                Ok(())
             }
 
             Categorization::StaticItem => {
@@ -92,13 +87,11 @@ impl<'a, 'tcx> GuaranteeLifetimeContext<'a, 'tcx> {
         }
     }
 
-    fn check_scope(&self, max_scope: ty::Region) -> R {
+    fn check_scope(&self, max_scope: ty::Region) {
         //! Reports an error if `loan_region` is larger than `max_scope`
 
         if !self.bccx.is_subregion_of(self.loan_region, max_scope) {
-            Err(self.report_error(err_out_of_scope(max_scope, self.loan_region)))
-        } else {
-            Ok(())
+            span_bug!(self.span, "Scope error should have been caught by regionck");
         }
     }
 
@@ -133,12 +126,5 @@ impl<'a, 'tcx> GuaranteeLifetimeContext<'a, 'tcx> {
                 self.scope(cmt)
             }
         }
-    }
-
-    fn report_error(&self, code: bckerr_code) {
-        self.bccx.report(BckError { cmt: self.cmt_original.clone(),
-                                    span: self.span,
-                                    cause: BorrowViolation(self.cause),
-                                    code: code });
     }
 }

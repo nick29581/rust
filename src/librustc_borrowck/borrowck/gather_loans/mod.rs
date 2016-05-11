@@ -333,7 +333,7 @@ impl<'a, 'tcx> GatherLoanCtxt<'a, 'tcx> {
         // Check that the lifetime of the borrow does not exceed
         // the lifetime of the data being borrowed.
         if lifetime::guarantee_lifetime(self.bccx, self.item_ub,
-                                        borrow_span, cause, cmt.clone(), loan_region,
+                                        borrow_span, cmt.clone(), loan_region,
                                         req_kind).is_err() {
             return; // reported an error, no sense in reporting more.
         }

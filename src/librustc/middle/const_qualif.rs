@@ -10,7 +10,7 @@
 
 // Const qualification, from partial to completely promotable.
 bitflags! {
-    #[derive(RustcEncodable, RustcDecodable)]
+    #[derive(RustcEncodable, RustcDecodable, Debug)]
     flags ConstQualif: u8 {
         // Inner mutability (can not be placed behind a reference) or behind
         // &mut in a non-global expression. Can be copied from static memory.

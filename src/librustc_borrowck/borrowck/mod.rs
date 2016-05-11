@@ -562,7 +562,6 @@ pub fn opt_loan_path<'tcx>(cmt: &mc::cmt<'tcx>) -> Option<Rc<LoanPath<'tcx>>> {
 #[derive(PartialEq)]
 pub enum bckerr_code {
     err_mutbl,
-    err_out_of_scope(ty::Region, ty::Region), // superscope, subscope
     err_borrowed_pointer_too_short(ty::Region, ty::Region), // loan, ptr
 }
 
@@ -608,18 +607,6 @@ impl<'a, 'tcx> BorrowckCtxt<'a, 'tcx> {
     }
 
     pub fn report(&self, err: BckError<'tcx>) {
-        // Catch and handle some particular cases.
-        match (&err.code, &err.cause) {
-            (&err_out_of_scope(ty::ReScope(_), ty::ReStatic),
-             &BorrowViolation(euv::ClosureCapture(span))) |
-            (&err_out_of_scope(ty::ReScope(_), ty::ReFree(..)),
-             &BorrowViolation(euv::ClosureCapture(span))) => {
-                return self.report_out_of_scope_escaping_closure_capture(&err, span);
-            }
-            _ => { }
-        }
-
-        // General fallback.
         let mut db = self.struct_span_err(
             err.span,
             &self.bckerr_to_string(&err));
@@ -823,15 +810,6 @@ impl<'a, 'tcx> BorrowckCtxt<'a, 'tcx> {
                     }
                 }
             }
-            err_out_of_scope(..) => {
-                let msg = match opt_loan_path(&err.cmt) {
-                    None => "borrowed value".to_string(),
-                    Some(lp) => {
-                        format!("`{}`", self.loan_path_to_string(&lp))
-                    }
-                };
-                format!("{} does not live long enough", msg)
-            }
             err_borrowed_pointer_too_short(..) => {
                 let descr = self.cmt_to_path_or_string(&err.cmt);
                 format!("lifetime of {} is too short to guarantee \
@@ -917,35 +895,6 @@ impl<'a, 'tcx> BorrowckCtxt<'a, 'tcx> {
         err.emit();
     }
 
-    fn report_out_of_scope_escaping_closure_capture(&self,
-                                                    err: &BckError<'tcx>,
-                                                    capture_span: Span)
-    {
-        let cmt_path_or_string = self.cmt_to_path_or_string(&err.cmt);
-
-        let suggestion =
-            match self.tcx.sess.codemap().span_to_snippet(err.span) {
-                Ok(string) => format!("move {}", string),
-                Err(_) => format!("move |<args>| <body>")
-            };
-
-        struct_span_err!(self.tcx.sess, err.span, E0373,
-                         "closure may outlive the current function, \
-                          but it borrows {}, \
-                          which is owned by the current function",
-                         cmt_path_or_string)
-            .span_note(capture_span,
-                       &format!("{} is borrowed here",
-                                cmt_path_or_string))
-            .span_suggestion(err.span,
-                             &format!("to force the closure to take ownership of {} \
-                                       (and any other referenced variables), \
-                                       use the `move` keyword, as shown:",
-                                       cmt_path_or_string),
-                             suggestion)
-            .emit();
-    }
-
     pub fn note_and_explain_bckerr(&self, db: &mut DiagnosticBuilder, err: BckError<'tcx>) {
         let code = err.code;
         match code {
@@ -978,23 +927,6 @@ impl<'a, 'tcx> BorrowckCtxt<'a, 'tcx> {
                             }
                         }
                     }
-                }
-            }
-
-            err_out_of_scope(super_scope, sub_scope) => {
-                self.tcx.note_and_explain_region(
-                    db,
-                    "reference must be valid for ",
-                    sub_scope,
-                    "...");
-                self.tcx.note_and_explain_region(
-                    db,
-                    "...but borrowed value is only valid for ",
-                    super_scope,
-                    "");
-                if let Some(span) = statement_scope_span(self.tcx, super_scope) {
-                    db.span_help(span,
-                                 "consider using a `let` binding to increase its lifetime");
                 }
             }
 
@@ -1104,18 +1036,6 @@ impl<'a, 'tcx> BorrowckCtxt<'a, 'tcx> {
             Some(lp) => format!("`{}`", self.loan_path_to_string(&lp)),
             None => self.cmt_to_string(cmt),
         }
-    }
-}
-
-fn statement_scope_span(tcx: &TyCtxt, region: ty::Region) -> Option<Span> {
-    match region {
-        ty::ReScope(scope) => {
-            match tcx.map.find(scope.node_id(&tcx.region_maps)) {
-                Some(hir_map::NodeStmt(stmt)) => Some(stmt.span),
-                _ => None
-            }
-        }
-        _ => None
     }
 }
 
