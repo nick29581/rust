@@ -54,7 +54,7 @@ extern crate rustc_resolve;
 extern crate rustc_save_analysis;
 extern crate rustc_trans;
 extern crate rustc_typeck;
-extern crate serialize;
+extern crate serialize as rustc_serialize;
 extern crate rustc_llvm as llvm;
 #[macro_use]
 extern crate log;
@@ -74,6 +74,7 @@ use rustc::dep_graph::DepGraph;
 use rustc::session::{self, config, Session, build_session, CompileResult};
 use rustc::session::config::{Input, PrintRequest, OutputType, ErrorOutputType};
 use rustc::session::config::{get_unstable_features_setting, nightly_options};
+use rustc::session::early_error;
 use rustc::lint::Lint;
 use rustc::lint;
 use rustc_metadata::loader;
@@ -92,8 +93,6 @@ use std::rc::Rc;
 use std::str;
 use std::sync::{Arc, Mutex};
 use std::thread;
-
-use rustc::session::early_error;
 
 use syntax::{ast, json};
 use syntax::codemap::{CodeMap, FileLoader, RealFileLoader};
@@ -131,17 +130,19 @@ pub fn abort_on_err<T>(result: Result<T, usize>, sess: &Session) -> T {
     }
 }
 
-pub fn run(args: Vec<String>) -> isize {
+// TODO factor out the monitor call
+pub fn run<F>(run_compiler: F) -> isize 
+    where F: FnOnce() -> (CompileResult, Option<Session>) + Send + 'static
+{
     monitor(move || {
-        let (result, session) = run_compiler(&args, &mut RustcDefaultCalls);
+        let (result, session) = run_compiler();
         if let Err(err_count) = result {
             if err_count > 0 {
                 match session {
                     Some(sess) => sess.fatal(&abort_msg(err_count)),
                     None => {
                         let emitter =
-                            errors::emitter::EmitterWriter::stderr(errors::ColorConfig::Auto,
-                                                                   None);
+                            errors::emitter::EmitterWriter::stderr(errors::ColorConfig::Auto, None);
                         let handler = errors::Handler::with_emitter(true, false, Box::new(emitter));
                         handler.emit(&MultiSpan::new(),
                                      &abort_msg(err_count),
@@ -168,7 +169,8 @@ pub fn run_compiler_with_file_loader<'a, L>(args: &[String],
                                             callbacks: &mut CompilerCalls<'a>,
                                             loader: Box<L>)
                                             -> (CompileResult, Option<Session>)
-    where L: FileLoader + 'static {
+    where L: FileLoader + 'static
+{
     macro_rules! do_or_return {($expr: expr, $sess: expr) => {
         match $expr {
             Compilation::Stop => return (Ok(()), $sess),
@@ -1146,6 +1148,6 @@ pub fn diagnostics_registry() -> errors::registry::Registry {
 }
 
 pub fn main() {
-    let result = run(env::args().collect());
+    let result = run(|| run_compiler(&env::args().collect::<Vec<_>>(), &mut RustcDefaultCalls));
     process::exit(result as i32);
 }

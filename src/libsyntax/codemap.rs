@@ -20,16 +20,16 @@
 pub use self::ExpnFormat::*;
 
 use std::cell::RefCell;
-use std::path::{Path,PathBuf};
-use std::rc::Rc;
-
 use std::env;
 use std::fs;
 use std::io::{self, Read};
+use std::path::{Path,PathBuf};
+use std::rc::Rc;
+
+use ast::Name;
 pub use syntax_pos::*;
 use errors::CodeMapper;
 
-use ast::Name;
 
 /// Return the span itself if it doesn't come from a macro expansion,
 /// otherwise return the call site span up to the `enclosing_sp` by
