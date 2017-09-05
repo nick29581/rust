@@ -808,8 +808,12 @@ pub fn rls(build: &Build, stage: u32, target: &str) {
        .arg("--output-dir").arg(&distdir(build))
        .arg("--non-installed-overlay").arg(&overlay)
        .arg(format!("--package-name={}-{}", name, target))
-       .arg("--component-name=rls")
        .arg("--legacy-manifest-dirs=rustlib,cargo");
+    if build.config.channel == "nightly" {
+        cmd.arg("--component-name=rls");
+    } else {
+        cmd.arg("--component-name=rls-preview");
+    }
     build.run(&mut cmd);
 }
 
